@@ -1,0 +1,79 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "tf_static_link.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "robot_namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [],
+  "parameter_loaders": [],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "base_footprint_transform_node",
+      "name": "tf_static_publisher_base_link_base_footprint",
+      "package": "tf2_ros",
+      "executable": "static_transform_publisher",
+      "namespace_argument": "namespace",
+      "parameter_variable": null,
+      "arguments": [
+        {"type": "literal", "value": "--x"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--y"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--z"},
+        {"type": "literal", "value": "-0.035"},
+        {"type": "literal", "value": "--roll"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--pitch"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--yaw"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--frame-id"},
+        {"type": "literal", "value": "base_link"},
+        {"type": "literal", "value": "--child-frame-id"},
+        {"type": "literal", "value": "base_footprint"}
+      ],
+      "remappings": [],
+      "expanded_parameters": false
+    },
+    {
+      "result_name": "laser_transform_node",
+      "name": "tf_static_publisher_base_link_laser_link",
+      "package": "tf2_ros",
+      "executable": "static_transform_publisher",
+      "namespace_argument": "namespace",
+      "parameter_variable": null,
+      "arguments": [
+        {"type": "literal", "value": "--x"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--y"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--z"},
+        {"type": "literal", "value": "0.155"},
+        {"type": "literal", "value": "--roll"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--pitch"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--yaw"},
+        {"type": "literal", "value": "0.0"},
+        {"type": "literal", "value": "--frame-id"},
+        {"type": "literal", "value": "base_link"},
+        {"type": "literal", "value": "--child-frame-id"},
+        {"type": "literal", "value": "laser_link"}
+      ],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "robot_namespace_arg",
+    "base_footprint_transform_node",
+    "laser_transform_node"
+  ]
+}

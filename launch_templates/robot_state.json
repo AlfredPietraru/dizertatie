@@ -1,0 +1,60 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "robot_state.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "robot_namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [
+    {
+      "result_name": "xacro_file",
+      "package": "antrobot_description",
+      "segments": [
+        "urdf",
+        "antrobot.xacro"
+      ]
+    }
+  ],
+  "xacro_documents": [
+    {
+      "result_name": "robot_urdf",
+      "path_variable": "xacro_file"
+    }
+  ],
+  "parameter_loaders": [],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "robot_state_publisher_node",
+      "name": "robot_state_publisher",
+      "package": "robot_state_publisher",
+      "executable": "robot_state_publisher",
+      "namespace_argument": "namespace",
+      "parameter_variable": null,
+      "inline_parameters": {
+        "robot_description": {
+          "type": "variable",
+          "value": "robot_urdf"
+        },
+        "publish_frequency": 20.0,
+        "ignore_timestamp": false,
+        "frame_prefix": {
+          "type": "launch_configuration",
+          "name": "namespace"
+        }
+      },
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "robot_namespace_arg",
+    "robot_state_publisher_node"
+  ]
+}

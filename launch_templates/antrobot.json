@@ -1,0 +1,241 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "antrobot.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "namespace_launch_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot"
+    },
+    {
+      "result_name": "rdrive_launch_arg",
+      "name": "launch_rdrive",
+      "default": "true",
+      "description": "Launch rdrive"
+    },
+    {
+      "result_name": "rplidar_launch_arg",
+      "name": "launch_rplidar",
+      "default": "true",
+      "description": "Launch rplidar"
+    },
+    {
+      "result_name": "joint_state_estimator_launch_arg",
+      "name": "launch_joint_state_estimator",
+      "default": "true",
+      "description": "Launch joint_state_estimator"
+    },
+    {
+      "result_name": "robot_state_launch_arg",
+      "name": "launch_robot_state",
+      "default": "true",
+      "description": "Launch robot_state"
+    },
+    {
+      "result_name": "tf_static_link_launch_arg",
+      "name": "launch_tf_static_link",
+      "default": "false",
+      "description": "Launch tf_static_link"
+    },
+    {
+      "result_name": "laserscan_to_pointcloud_launch_arg",
+      "name": "launch_laserscan_to_pointcloud",
+      "default": "false",
+      "description": "Launch laserscan_to_pointcloud"
+    },
+    {
+      "result_name": "kiss_icp_launch_arg",
+      "name": "launch_kiss_icp",
+      "default": "false",
+      "description": "Launch kiss_icp"
+    },
+    {
+      "result_name": "kinematic_icp_launch_arg",
+      "name": "launch_kinematic_icp",
+      "default": "true",
+      "description": "Launch kinematic_icp"
+    },
+    {
+      "result_name": "cartographer_launch_arg",
+      "name": "launch_cartographer",
+      "default": "true",
+      "description": "Launch cartographer"
+    },
+    {
+      "result_name": "nav2_launch_arg",
+      "name": "launch_nav2",
+      "default": "true",
+      "description": "Launch nav2"
+    },
+    {
+      "result_name": "explore_lite_launch_arg",
+      "name": "explore_lite",
+      "default": "false",
+      "description": "Enable explore_lite with map conversion"
+    }
+  ],
+  "computed_paths": [],
+  "parameter_loaders": [],
+  "parameter_extractions": [],
+  "nodes": [],
+  "included_launch_files": [
+    {
+      "result_name": "rdrive_launch",
+      "package": "antrobot_ros",
+      "launch_file": "rdrive.launch.py",
+      "condition_argument": "launch_rdrive",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "rplidar_launch",
+      "package": "antrobot_ros",
+      "launch_file": "rplidar.launch.py",
+      "condition_argument": "launch_rplidar",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "tf_static_link_launch",
+      "package": "antrobot_ros",
+      "launch_file": "tf_static_link.launch.py",
+      "condition_argument": "launch_tf_static_link",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "laserscan_to_pointcloud_launch",
+      "package": "antrobot_ros",
+      "launch_file": "laserscan_to_pointcloud.launch.py",
+      "condition_argument": "launch_laserscan_to_pointcloud",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "kiss_icp_launch",
+      "package": "antrobot_ros",
+      "launch_file": "kiss_icp.launch.py",
+      "condition_argument": "launch_kiss_icp",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "kinematic_icp_launch",
+      "package": "antrobot_ros",
+      "launch_file": "kinematic_icp.launch.py",
+      "condition_argument": "launch_kinematic_icp",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "cartographer_launch",
+      "package": "antrobot_ros",
+      "launch_file": "cartographer.launch.py",
+      "condition_argument": "launch_cartographer",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "joint_state_estimator_launch",
+      "package": "antrobot_ros",
+      "launch_file": "joint_state_estimator.launch.py",
+      "condition_argument": "launch_joint_state_estimator",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "robot_state_launch",
+      "package": "antrobot_ros",
+      "launch_file": "robot_state.launch.py",
+      "condition_argument": "launch_robot_state",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "nav2_launch",
+      "package": "antrobot_ros",
+      "launch_file": "nav2.launch.py",
+      "condition_argument": "launch_nav2",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    },
+    {
+      "result_name": "explore_lite_launch",
+      "package": "antrobot_ros",
+      "launch_file": "explore_lite.launch.py",
+      "condition_argument": "explore_lite",
+      "launch_arguments": [
+        {
+          "name": "namespace",
+          "value": "namespace"
+        }
+      ]
+    }
+  ],
+  "launch_description": [
+    "namespace_launch_arg",
+    "rdrive_launch_arg",
+    "rplidar_launch_arg",
+    "tf_static_link_launch_arg",
+    "laserscan_to_pointcloud_launch_arg",
+    "kiss_icp_launch_arg",
+    "kinematic_icp_launch_arg",
+    "cartographer_launch_arg",
+    "joint_state_estimator_launch_arg",
+    "robot_state_launch_arg",
+    "nav2_launch_arg",
+    "explore_lite_launch_arg",
+    "rdrive_launch",
+    "rplidar_launch",
+    "tf_static_link_launch",
+    "laserscan_to_pointcloud_launch",
+    "kiss_icp_launch",
+    "kinematic_icp_launch",
+    "cartographer_launch",
+    "joint_state_estimator_launch",
+    "robot_state_launch",
+    "nav2_launch",
+    "explore_lite_launch"
+  ]
+}

@@ -1,0 +1,51 @@
+{% macro render_node_argument(argument) -%}
+{% if argument.type == "variable" -%}
+{{ argument.value }}
+{%- else -%}
+'{{ argument.value }}'
+{%- endif %}
+{%- endmacro %}
+
+{% macro render_parameter_value(value) -%}
+{% if value is mapping and value.type == "variable" -%}
+{{ value.value }}
+{%- elif value is mapping and value.type == "launch_configuration" -%}
+LaunchConfiguration('{{ value.name }}')
+{%- elif value is sameas true -%}
+True
+{%- elif value is sameas false -%}
+False
+{%- elif value is number -%}
+{{ value }}
+{%- else -%}
+'{{ value }}'
+{%- endif %}
+{%- endmacro %}
+
+{% macro define_node(node) %}    {{ node.result_name }} = Node(
+        package='{{ node.package }}',
+        executable='{{ node.executable }}',
+{% if node.namespace_argument %}
+        namespace=LaunchConfiguration('{{ node.namespace_argument }}'),
+{% endif %}
+        name='{{ node.name }}',
+        output='screen',{% if node.emulate_tty | default(false) %}
+        emulate_tty=True,
+{% endif %}{% if node.prefix | default(none) %}
+        prefix='{{ node.prefix }}',
+{% endif %}{% if node.arguments %}
+        arguments=[{% for argument in node.arguments %}{{ render_node_argument(argument) }}{% if not loop.last %}, {% endif %}{% endfor %}],
+{% endif %}{% if node.remappings %}
+        remappings=[
+            # Remap the output topic to your desired name
+{% for remapping in node.remappings %}            ("{{ remapping.source }}", {{ remapping.target_variable }}),
+{% endfor %}        ],{% endif %}{% if node.expanded_parameters %}
+        parameters=[
+            # Load ALL parameters from your config file
+            {{ node.parameter_variable }},
+        ],{% elif node.parameter_variable %}
+        parameters=[{{ node.parameter_variable }}],{% elif node.inline_parameters | default(none) %}
+        parameters=[{
+{% for name, value in node.inline_parameters.items() %}            '{{ name }}': {{ render_parameter_value(value) }},
+{% endfor %}        }],{% endif %}
+    ){%- endmacro %}

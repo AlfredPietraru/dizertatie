@@ -1,0 +1,41 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "joint_state_estimator.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "robot_namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [],
+  "parameter_loaders": [
+    {
+      "path_variable": "config_file_path",
+      "parameter_variable": "joint_state_estimator_params",
+      "config_package": "antrobot_ros",
+      "parameter_file": "antrobot_params.yaml",
+      "parameter_key": "joint_state_estimator"
+    }
+  ],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "joint_state_estimator_node",
+      "name": "joint_state_estimator",
+      "package": "antrobot_ros",
+      "executable": "joint_state_estimator_node",
+      "namespace_argument": "namespace",
+      "parameter_variable": "joint_state_estimator_params",
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "robot_namespace_arg",
+    "joint_state_estimator_node"
+  ]
+}

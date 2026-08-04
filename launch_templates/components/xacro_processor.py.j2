@@ -1,0 +1,1 @@
+{% macro process_xacro(document) %}    {{ document.result_name }} = xacro.process_file({{ document.path_variable }}).toxml(){%- endmacro %}

@@ -1,0 +1,56 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "explore_lite.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [
+    {
+      "result_name": "explore_lite_config_path",
+      "package": "antrobot_ros",
+      "segments": [
+        "config",
+        "explore_lite_params.yaml"
+      ]
+    }
+  ],
+  "parameter_loaders": [],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "map_converter_node",
+      "name": "explore_lite_map_converter",
+      "package": "antrobot_ros",
+      "executable": "explore_lite_map_converter",
+      "namespace_argument": "namespace",
+      "parameter_variable": "explore_lite_config_path",
+      "emulate_tty": true,
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    },
+    {
+      "result_name": "explore_node",
+      "name": "explore",
+      "package": "explore_lite",
+      "executable": "explore",
+      "namespace_argument": "namespace",
+      "parameter_variable": "explore_lite_config_path",
+      "emulate_tty": true,
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "namespace_arg",
+    "map_converter_node",
+    "explore_node"
+  ]
+}

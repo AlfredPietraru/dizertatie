@@ -1,0 +1,93 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "cartographer.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [
+    {
+      "result_name": "cartographer_config_directory",
+      "package": "antrobot_ros",
+      "segments": [
+        "config"
+      ]
+    }
+  ],
+  "parameter_loaders": [],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "cartographer_node",
+      "name": "cartographer_node",
+      "package": "cartographer_ros",
+      "executable": "cartographer_node",
+      "namespace_argument": "namespace",
+      "parameter_variable": null,
+      "inline_parameters": {
+        "use_sim_time": false
+      },
+      "arguments": [
+        {
+          "type": "literal",
+          "value": "-configuration_directory"
+        },
+        {
+          "type": "variable",
+          "value": "cartographer_config_directory"
+        },
+        {
+          "type": "literal",
+          "value": "-configuration_basename"
+        },
+        {
+          "type": "literal",
+          "value": "antrobot_cartographer_2d.lua"
+        }
+      ],
+      "remappings": [],
+      "expanded_parameters": false
+    },
+    {
+      "result_name": "occupancy_grid_node",
+      "name": "occupancy_grid_node",
+      "package": "cartographer_ros",
+      "executable": "cartographer_occupancy_grid_node",
+      "namespace_argument": "namespace",
+      "parameter_variable": null,
+      "inline_parameters": {
+        "use_sim_time": false
+      },
+      "arguments": [
+        {
+          "type": "literal",
+          "value": "-resolution"
+        },
+        {
+          "type": "literal",
+          "value": "0.05"
+        },
+        {
+          "type": "literal",
+          "value": "-publish_period_sec"
+        },
+        {
+          "type": "literal",
+          "value": "1.0"
+        }
+      ],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "namespace_arg",
+    "cartographer_node",
+    "occupancy_grid_node"
+  ]
+}

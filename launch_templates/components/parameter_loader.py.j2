@@ -1,0 +1,10 @@
+{% macro load_parameters(loader) %}    {{ loader.path_variable }} = os.path.join(
+        get_package_share_directory('{{ loader.config_package }}'),
+        'config',
+        '{{ loader.parameter_file }}'
+    )
+
+    {{ loader.parameter_variable }} = load_node_params(
+        {{ loader.path_variable }},
+        '{{ loader.parameter_key }}'
+    ){%- endmacro %}

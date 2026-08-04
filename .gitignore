@@ -1,0 +1,8 @@
+log
+install
+build
+src
+.vscode
+.env
+__pycache__
+artifacts

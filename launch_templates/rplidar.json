@@ -1,0 +1,41 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "rplidar.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "robot_namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [],
+  "parameter_loaders": [
+    {
+      "path_variable": "config_file_path",
+      "parameter_variable": "rplidar_params",
+      "config_package": "antrobot_ros",
+      "parameter_file": "antrobot_params.yaml",
+      "parameter_key": "rplidar"
+    }
+  ],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "rplidar_node",
+      "name": "rplidar_node",
+      "package": "rplidar_ros",
+      "executable": "rplidar_node",
+      "namespace_argument": "namespace",
+      "parameter_variable": "rplidar_params",
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "robot_namespace_arg",
+    "rplidar_node"
+  ]
+}

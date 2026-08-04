@@ -1,0 +1,29 @@
+{% macro render_path_part(part) -%}
+{% if part is mapping and part.type == "find_package_share" -%}
+FindPackageShare('{{ part.package }}')
+{%- else -%}
+'{{ part }}'
+{%- endif %}
+{%- endmacro %}
+
+{% macro include_launch_description(include) %}    {{ include.result_name }} = IncludeLaunchDescription(
+{% if include.source | default(none) and include.source.type == "path_join_substitution" %}
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+{% for part in include.source.parts %}                {{ render_path_part(part) }},
+{% endfor %}            ])
+        ]),
+{% else %}
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                FindPackageShare('{{ include.package }}').find('{{ include.package }}'),
+                'launch',
+                '{{ include.launch_file }}'
+            )
+        ),
+{% endif %}
+{% if include.condition_argument | default(none) %}
+        condition=IfCondition(LaunchConfiguration('{{ include.condition_argument }}')),
+{% endif %}
+        launch_arguments={{ "{" }}{% for argument in include.launch_arguments %}'{{ argument.name }}': LaunchConfiguration('{{ argument.value }}'){% if not loop.last %}, {% endif %}{% endfor %}{{ "}" }}.items()
+    ){%- endmacro %}

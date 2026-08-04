@@ -1,0 +1,17 @@
+{% macro render_path_part(part) -%}
+{% if part is mapping and part.type == "find_package_share" -%}
+FindPackageShare('{{ part.package }}')
+{%- else -%}
+'{{ part }}'
+{%- endif %}
+{%- endmacro %}
+
+{% macro declare_launch_argument(argument) %}    {{ argument.result_name }} = DeclareLaunchArgument(
+        '{{ argument.name }}',{% if argument.default is mapping and argument.default.type == "path_join_substitution" %}
+        default_value=PathJoinSubstitution([
+{% for part in argument.default.parts %}                {{ render_path_part(part) }},
+{% endfor %}            ]),
+        description='{{ argument.description }}'{% else %}
+        default_value='{{ argument.default }}',
+        description='{{ argument.description }}'{% endif %}
+    ){%- endmacro %}

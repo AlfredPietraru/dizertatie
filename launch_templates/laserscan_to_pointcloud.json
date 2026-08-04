@@ -1,0 +1,41 @@
+{
+  "template": "generator_launch_file.py.j2",
+  "output_filename": "laserscan_to_pointcloud.launch.py",
+  "launch_arguments": [
+    {
+      "result_name": "namespace_arg",
+      "name": "namespace",
+      "default": "",
+      "description": "Namespace for the robot instance"
+    }
+  ],
+  "computed_paths": [],
+  "parameter_loaders": [
+    {
+      "path_variable": "config_file_path",
+      "parameter_variable": "params",
+      "config_package": "antrobot_ros",
+      "parameter_file": "antrobot_params.yaml",
+      "parameter_key": "laserscan_to_pointcloud"
+    }
+  ],
+  "parameter_extractions": [],
+  "nodes": [
+    {
+      "result_name": "laserscan_to_pointcloud_node",
+      "name": "laserscan_to_pointcloud",
+      "package": "antrobot_ros",
+      "executable": "laserscan_to_pointcloud_node",
+      "namespace_argument": "namespace",
+      "parameter_variable": "params",
+      "arguments": [],
+      "remappings": [],
+      "expanded_parameters": false
+    }
+  ],
+  "included_launch_files": [],
+  "launch_description": [
+    "namespace_arg",
+    "laserscan_to_pointcloud_node"
+  ]
+}
