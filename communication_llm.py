@@ -1,30 +1,52 @@
+"""Minimal HTTP client for chat completions served by Ollama."""
+
 import os
-from pathlib import Path
 
+import requests
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 load_dotenv()
 
-import os
-from openai import OpenAI
+OLLAMA_HOST = os.getenv("OLLAMA_HOST_PATH")
+OLLAMA_MODEL = "qwen2.5-coder:7b"
 
-client = OpenAI(
-    base_url="https://router.huggingface.co/v1",
-    api_key=os.environ["HF_TOKEN"],
-)
 
-completion = client.chat.completions.create(
-    model="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B:nscale",
-    messages=[
-        {
-            "role": "user",
-            "content": "What is the capital of France?"
-        }
-    ],
-)
+def call_model(system_prompt: str, user_prompt: str) -> str:
+    """Send a system and user prompt to the configured Ollama instance."""
+    if not OLLAMA_HOST:
+        raise RuntimeError("OLLAMA_HOST_PATH is not set in the environment or .env file")
 
-llm_message = completion.choices[0].message
-print(llm_message.content)
+    url = f"http://{OLLAMA_HOST}:11434/api/chat"
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+        "stream": False,
+    }
 
+    response = requests.post(url, json=payload, timeout=300)
+    response.raise_for_status()
+
+    data = response.json()
+    try:
+        return data["message"]["content"]
+    except (KeyError, TypeError) as error:
+        raise RuntimeError("Ollama returned an unexpected response") from error
+
+
+if __name__ == "__main__":
+    print(
+        call_model(
+            "You are a helpful assistant.",
+            "What is the capital of France?",
+        )
+    )

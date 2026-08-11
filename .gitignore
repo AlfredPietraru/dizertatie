@@ -1,8 +1,9 @@
 log
 install
 build
-src
 .vscode
 .env
 __pycache__
 artifacts
+launch_templates/launch_files
+launch_templates/yaml_files

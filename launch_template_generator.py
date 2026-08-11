@@ -12,9 +12,9 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_CONFIG = PROJECT_ROOT / "launch_templates" / "joint_state_estimator.json"
 TEMPLATE_DIRECTORY = PROJECT_ROOT / "launch_templates"
-OUTPUT_DIRECTORY = PROJECT_ROOT / "artifacts" / "launch_files"
+DEFAULT_CONFIG = TEMPLATE_DIRECTORY / "json_files" / "joint_state_estimator.json"
+OUTPUT_DIRECTORY = PROJECT_ROOT / "launch_templates" / "launch_files"
 REQUIRED_FIELDS = {
     "template",
     "output_filename",
@@ -123,8 +123,8 @@ def load_config(config_path: Path) -> dict[str, Any]:
     return config
 
 
-def generate_launch_file(config_path: Path, output_directory: Path) -> Path:
-    """Render one launch file and return its output path."""
+def generate_launch_file(config_path: Path) -> Path:
+    """Render one launch file into launch_templates/launch_files."""
     config = load_config(config_path)
     template_name = config.get("template", "generator_launch_file.py.j2")
 
@@ -136,8 +136,8 @@ def generate_launch_file(config_path: Path, output_directory: Path) -> Path:
     )
     rendered_launch_file = environment.get_template(template_name).render(**config)
 
-    output_directory.mkdir(parents=True, exist_ok=True)
-    output_path = output_directory / config["output_filename"]
+    OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIRECTORY / config["output_filename"]
     output_path.write_text(rendered_launch_file, encoding="utf-8")
     return output_path
 
@@ -153,19 +153,13 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CONFIG,
         help=f"JSON configuration (default: {DEFAULT_CONFIG.relative_to(PROJECT_ROOT)})",
     )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=OUTPUT_DIRECTORY,
-        help="directory for generated launch files",
-    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        output_path = generate_launch_file(args.config.resolve(), args.output_dir)
+        output_path = generate_launch_file(args.config.resolve())
     except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"Error: {error}")
         return 1

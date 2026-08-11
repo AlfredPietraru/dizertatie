@@ -5,9 +5,9 @@
 The launch-template experiment can now describe and generate every non-empty
 ROS 2 Python launch file examined in `src/antrobot_ros/launch`.
 
-- 17 JSON launch descriptions exist in `launch_templates/`.
+- 17 JSON launch descriptions exist in `launch_templates/json_files/`.
 - 17 corresponding Python launch files are generated in
-  `artifacts/launch_files/`.
+  `launch_templates/launch_files/`.
 - All generated JSON files pass JSON parsing and generator validation.
 - All generated Python launch files pass Python compilation.
 - The Xacro expansion used by `robot_state.launch.py` was also tested
