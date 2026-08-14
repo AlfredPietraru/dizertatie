@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from helper_scripts.ast_intermediate import ast_from_json
+from .ast_intermediate import ast_from_json
 
 
 ROS_CONSUMERS = {
@@ -609,37 +609,25 @@ def networkx_export(graph: Graph, output_path: Path) -> bool:
     return True
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", type=Path, default=Path.cwd())
-    parser.add_argument("--ast-artifact", type=Path, default=Path("artifacts/repo_ingestion/ast_extraction.json"))
-    parser.add_argument("--catalog", type=Path, default=Path("artifacts/repo_ingestion/configuration_sources.json"))
-    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/repo_ingestion"))
-    return parser.parse_args()
-
-
-def main() -> int:
-    args = parse_args()
-    workspace = args.workspace.resolve()
-    ast_path = args.ast_artifact if args.ast_artifact.is_absolute() else workspace / args.ast_artifact
-    catalog_path = args.catalog if args.catalog.is_absolute() else workspace / args.catalog
-    output_dir = args.output_dir if args.output_dir.is_absolute() else workspace / args.output_dir
-    extracted = json.loads(ast_path.read_text(encoding="utf-8"))
-    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+def analyze_value_flow(
+    extracted: dict[str, Any], catalog: dict[str, Any]
+) -> tuple[dict[str, Any], Graph, set[str]]:
+    """Build the value-flow graph and return its serializable payload."""
     graph, roots, failures = build_graph(extracted, catalog)
     relation_counts = Counter(edge["relation"] for edge in graph.edges)
     kind_counts = Counter(node["kind"] for node in graph.nodes.values())
     summary = {
         "nodes": len(graph.nodes),
         "edges": len(graph.edges),
-        "configuration_roots": sum(node["kind"] == "configuration_source" for node in graph.nodes.values()),
+        "configuration_roots": sum(
+            node["kind"] == "configuration_source" for node in graph.nodes.values()
+        ),
         "ros_consumers": kind_counts.get("ros_consumer", 0),
         "validations": relation_counts.get("validated_by", 0),
         "by_node_kind": dict(sorted(kind_counts.items())),
         "by_relation": dict(sorted(relation_counts.items())),
         "parse_failures": len(failures),
     }
-    output_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": 1,
         "stage": "configuration_value_flow_graph",
@@ -659,18 +647,60 @@ def main() -> int:
         "nodes": sorted(graph.nodes.values(), key=lambda item: item["id"]),
         "edges": graph.edges,
     }
-    (output_dir / "value_flow_graph.json").write_text(
-        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    return payload, graph, roots
+
+
+def write_value_flow_artifacts(
+    payload: dict[str, Any], graph: Graph, roots: set[str], output_dir: Path
+) -> dict[str, Path | bool]:
+    """Write JSON, Markdown, and optional GraphML value-flow artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "value_flow_graph.json"
+    markdown_path = output_dir / "value_flow_graph.md"
+    graphml_path = output_dir / "value_flow_graph.graphml"
+    status_path = output_dir / "value_flow_graph_status.json"
+    json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(
+        render_markdown(graph, roots, payload["summary"]), encoding="utf-8"
     )
-    (output_dir / "value_flow_graph.md").write_text(
-        render_markdown(graph, roots, summary), encoding="utf-8"
-    )
-    graphml_written = networkx_export(graph, output_dir / "value_flow_graph.graphml")
-    (output_dir / "value_flow_graph_status.json").write_text(
-        json.dumps({"graphml_written": graphml_written, "networkx_available": graphml_written}, indent=2) + "\n",
+    graphml_written = networkx_export(graph, graphml_path)
+    status_path.write_text(
+        json.dumps(
+            {"graphml_written": graphml_written, "networkx_available": graphml_written},
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
-    return 1 if failures else 0
+    return {
+        "json": json_path,
+        "markdown": markdown_path,
+        "graphml": graphml_path,
+        "status": status_path,
+        "graphml_written": graphml_written,
+    }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--workspace", type=Path, default=Path.cwd())
+    parser.add_argument("--ast-artifact", type=Path, default=Path("artifacts/repo_ingestion/ast_extraction.json"))
+    parser.add_argument("--catalog", type=Path, default=Path("artifacts/repo_ingestion/configuration_sources.json"))
+    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/repo_ingestion"))
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    workspace = args.workspace.resolve()
+    ast_path = args.ast_artifact if args.ast_artifact.is_absolute() else workspace / args.ast_artifact
+    catalog_path = args.catalog if args.catalog.is_absolute() else workspace / args.catalog
+    output_dir = args.output_dir if args.output_dir.is_absolute() else workspace / args.output_dir
+    extracted = json.loads(ast_path.read_text(encoding="utf-8"))
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    payload, graph, roots = analyze_value_flow(extracted, catalog)
+    write_value_flow_artifacts(payload, graph, roots, output_dir)
+    return 1 if payload["parse_failures"] else 0
 
 
 if __name__ == "__main__":

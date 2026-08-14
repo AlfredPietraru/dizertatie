@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 import argparse
-import http.client
-import json
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from communication_llm import call_model
 
 
 SOURCE_ROOTS = (
@@ -25,30 +27,20 @@ IGNORED_DIRECTORIES = {
     ".venv", "__pycache__", "build", "dist", "install", "log", "logs",
     "site-packages", "venv",
 }
-SOURCE_SUFFIXES = {".py", ".yaml", ".yml"}
-DEFAULT_MODEL = "deepseek-r1:7b"
-DEFAULT_BASE_URL = "http://127.0.0.1:11434/api"
+SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".h", ".hpp", ".py", ".xml", ".xacro", ".yaml", ".yml"}
+DEFAULT_PARAMETERS = (
+    "wheel_radius",
+    "wheel_separation",
+    "encoder_cpr_left",
+    "encoder_cpr_right",
+    "no_load_rpm_left",
+    "no_load_rpm_right",
+)
 
 
-SYSTEM_PROMPT = """You analyze one ROS configuration parameter using complete source files.
-Treat the supplied files as the only repository evidence. Do not invent constraints.
-
-Extract and clearly separate:
-1. every parameter occurrence and owning ROS node or component;
-2. declared code defaults;
-3. configured YAML values;
-4. types and units when supported by evidence;
-5. hard validity constraints and rejection behavior;
-6. observed thresholds used by conditions, without claiming they are allowed ranges;
-7. calculations and transformations involving the parameter;
-8. dependencies on other parameters or runtime values;
-9. runtime consumers and behavioral effects;
-10. uncertainties and evidence that is missing.
-
-For every claim, cite the repository-relative file and line number. Distinguish direct
-evidence from inference. A current default, hard constraint, recommended tuning range,
-and incidental comparison are different facts and must never be merged.
-"""
+SYSTEM_PROMPT = """Extract defaults and hard constraints for one ROS parameter.
+Use only the supplied files. Never invent a range or reinterpret a calculation as a
+constraint. Keep the answer focused on the requested parameter."""
 
 
 def repository_root() -> Path:
@@ -104,64 +96,18 @@ def render_context(parameter: str, files: list[tuple[Path, str]]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def call_ollama(
-    parameter: str,
-    context: str,
-    *,
-    model: str,
-    base_url: str,
-    num_ctx: int,
-    max_tokens: int,
-    system_prompt: str = SYSTEM_PROMPT,
-    user_prompt: str | None = None,
-) -> str:
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": user_prompt or (
-                    f"Analyze the parameter {parameter!r} from this whole-file evidence.\n\n"
-                    + context
-                ),
-            },
-        ],
-        "stream": False,
-        "options": {"num_ctx": num_ctx, "num_predict": max_tokens},
-    }
-    request = urllib.request.Request(
-        base_url.rstrip("/") + "/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=1800) as response:
-            result: dict[str, Any] = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Ollama HTTP {error.code}: {body}") from error
-    except (urllib.error.URLError, http.client.RemoteDisconnected) as error:
-        reason = getattr(error, "reason", str(error))
-        raise RuntimeError(f"Ollama unavailable or disconnected: {reason}") from error
-    content = result.get("message", {}).get("content")
-    if not content:
-        raise RuntimeError("Ollama returned no analysis: " + json.dumps(result))
-    return str(content)
-
-
 def safe_name(value: str) -> str:
     return "".join(character if character.isalnum() else "_" for character in value).strip("_")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("parameter")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
-    parser.add_argument("--num-ctx", type=int, default=16384)
-    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument(
+        "parameters",
+        nargs="*",
+        default=DEFAULT_PARAMETERS,
+        help="Exact parameter names (defaults to the six RDrive structural parameters)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -169,33 +115,60 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     root = repository_root()
-    files = matching_files(root, args.parameter)
-    if not files:
-        print(f"No source files contain the exact parameter {args.parameter!r}.", file=sys.stderr)
-        return 2
+    artifact_directory = root / "artifacts" / "simple_parameter_experiment"
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+    missing = False
 
-    name = safe_name(args.parameter)
-    context_path = root / f"artifacts/simple_parameter_context_{name}.md"
-    context = render_context(args.parameter, files)
-    context_path.parent.mkdir(parents=True, exist_ok=True)
-    context_path.write_text(context, encoding="utf-8")
-    print(f"Matched {len(files)} files; saved {len(context.encode('utf-8')):,} bytes to {context_path}")
+    for parameter in args.parameters:
+        files = matching_files(root, parameter)
+        if not files:
+            print(f"No source files contain {parameter!r}.", file=sys.stderr)
+            missing = True
+            continue
 
-    if args.dry_run:
-        return 0
-    analysis = call_ollama(
-        args.parameter,
-        context,
-        model=args.model,
-        base_url=args.base_url,
-        num_ctx=args.num_ctx,
-        max_tokens=args.max_tokens,
-    )
-    analysis_path = root / f"artifacts/simple_parameter_analysis_{name}.md"
-    analysis_path.write_text(analysis.rstrip() + "\n", encoding="utf-8")
-    print(analysis)
-    print(f"\nSaved analysis to {analysis_path}", file=sys.stderr)
-    return 0
+        name = safe_name(parameter)
+        context_path = artifact_directory / f"context_{name}.md"
+        context = render_context(parameter, files)
+        context_path.write_text(context, encoding="utf-8")
+        print(
+            f"{parameter}: matched {len(files)} files; "
+            f"saved {len(context.encode('utf-8')):,} bytes to {context_path}"
+        )
+
+        if args.dry_run:
+            continue
+
+        extraction_request = f"""
+END OF EVIDENCE.
+
+Now analyze only the exact parameter `{parameter}`. Ignore unrelated parameters and
+do not summarize the files. Return exactly these sections:
+
+## Configured default
+- List every value configured in antrobot_params.yaml, with its owning YAML section.
+
+## Code default
+- List every value used when code declares or constructs this parameter, with file.
+
+## Hard constraints
+- List only explicit validation/rejection rules enforced by code. If none exist,
+  write `No explicit hard constraint found`.
+
+## Inferred requirements
+- List requirements necessary to avoid an evident invalid operation (for example,
+  division by zero), clearly labeled as inference. If none, write `None`.
+
+Do not include a general repository, launch-file, URDF, ROS, or SLAM explanation.
+"""
+        analysis = call_model(
+            SYSTEM_PROMPT,
+            f"WHOLE-FILE EVIDENCE FOR `{parameter}`\n\n{context}\n{extraction_request}",
+        )
+        analysis_path = artifact_directory / f"analysis_{name}.md"
+        analysis_path.write_text(analysis.rstrip() + "\n", encoding="utf-8")
+        print(f"Saved model analysis to {analysis_path}")
+
+    return 2 if missing else 0
 
 
 if __name__ == "__main__":

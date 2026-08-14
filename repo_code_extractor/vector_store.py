@@ -2,12 +2,6 @@ import json
 import os
 from pathlib import Path
 
-import chromadb
-from chromadb.errors import NotFoundError
-from dotenv import load_dotenv
-from huggingface_hub import InferenceClient
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS_DIRECTORY = PROJECT_ROOT / "artifacts" / "part_1"
 CHUNKS_FILE = ARTIFACTS_DIRECTORY / "function_chunks.json"
@@ -16,11 +10,9 @@ COLLECTION_NAME = "antrobot_function_chunks"
 EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 BATCH_SIZE = 32
 
-load_dotenv(PROJECT_ROOT / ".env")
-
-
-def chroma_database_exists():
-    return CHROMA_DB_DIRECTORY.exists() and any(CHROMA_DB_DIRECTORY.iterdir())
+def chroma_database_exists(directory: str | Path = CHROMA_DB_DIRECTORY):
+    directory = Path(directory)
+    return directory.exists() and any(directory.iterdir())
 
 
 def read_chunks(chunks_file):
@@ -51,6 +43,10 @@ def create_metadata(chunk):
 
 
 def create_embedding_client():
+    try:
+        from huggingface_hub import InferenceClient
+    except ImportError as error:
+        raise ImportError("Vector ingestion requires huggingface-hub") from error
     return InferenceClient(
         provider="hf-inference",
         api_key=os.environ["HF_TOKEN"],
@@ -65,32 +61,55 @@ def embed_texts(client, texts):
     )
 
 
-def recreate_collection(chroma_client):
+def recreate_collection(chroma_client, collection_name=COLLECTION_NAME, source_file=CHUNKS_FILE):
     try:
-        chroma_client.delete_collection(COLLECTION_NAME)
+        from chromadb.errors import NotFoundError
+    except ImportError as error:
+        raise ImportError("Vector ingestion requires chromadb") from error
+    try:
+        chroma_client.delete_collection(collection_name)
     except (ValueError, NotFoundError):
         pass
 
     return chroma_client.create_collection(
-        name=COLLECTION_NAME,
+        name=collection_name,
         metadata={
             "embedding_model": EMBEDDING_MODEL,
-            "source_file": str(CHUNKS_FILE.relative_to(PROJECT_ROOT)),
+            "source_file": str(source_file),
         },
     )
 
 
-def ingest_chunks():
-    if chroma_database_exists():
-        print(f"ChromaDB already exists at {CHROMA_DB_DIRECTORY}")
+def ingest_chunks(
+    chunks_file: str | Path = CHUNKS_FILE,
+    database_directory: str | Path = CHROMA_DB_DIRECTORY,
+    collection_name: str = COLLECTION_NAME,
+    *,
+    recreate: bool = False,
+):
+    """Embed function chunks into a persistent ChromaDB collection."""
+    try:
+        import chromadb
+    except ImportError as error:
+        raise ImportError("Vector ingestion requires chromadb") from error
+    try:
+        from dotenv import load_dotenv
+    except ImportError as error:
+        raise ImportError("Vector ingestion requires python-dotenv") from error
+
+    load_dotenv(PROJECT_ROOT / ".env")
+    chunks_file = Path(chunks_file).resolve()
+    database_directory = Path(database_directory).resolve()
+    if chroma_database_exists(database_directory) and not recreate:
+        print(f"ChromaDB already exists at {database_directory}")
         print("Skipping embedding pipeline.")
         print("Delete this folder manually to rebuild the database.")
-        return
+        return None
 
-    chunks = read_chunks(CHUNKS_FILE)
+    chunks = read_chunks(chunks_file)
     embedding_client = create_embedding_client()
-    chroma_client = chromadb.PersistentClient(path=str(CHROMA_DB_DIRECTORY))
-    collection = recreate_collection(chroma_client)
+    chroma_client = chromadb.PersistentClient(path=str(database_directory))
+    collection = recreate_collection(chroma_client, collection_name, chunks_file)
 
     for batch_start in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[batch_start:batch_start + BATCH_SIZE]
@@ -111,9 +130,10 @@ def ingest_chunks():
 
         print(f"Stored {batch_start + len(batch)}/{len(chunks)} chunks")
 
-    print(f"ChromaDB saved to {CHROMA_DB_DIRECTORY}")
-    print(f"Collection: {COLLECTION_NAME}")
+    print(f"ChromaDB saved to {database_directory}")
+    print(f"Collection: {collection_name}")
     print(f"Total chunks stored: {collection.count()}")
+    return collection
 
 
 if __name__ == "__main__":

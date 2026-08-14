@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from helper_scripts.ast_intermediate import ast_from_json
+from .ast_intermediate import ast_from_json
 
 
 ROS_PARAMETER_OPERATIONS = {
@@ -619,7 +619,11 @@ def detect(ast_path: Path, workspace: Path) -> dict[str, Any]:
         "schema_version": 1,
         "stage": "configuration_source_detection",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source_ast": ast_path.relative_to(workspace).as_posix(),
+        "source_ast": (
+            ast_path.relative_to(workspace).as_posix()
+            if ast_path.is_relative_to(workspace)
+            else ast_path.as_posix()
+        ),
         "scope_policy": {
             "input_modules_from_stage_01_ast": True,
             "reparse_source": False,
@@ -678,6 +682,16 @@ def render_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def write_detection_artifacts(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
+    """Write configuration-detection artifacts and return their paths."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "configuration_sources.json"
+    markdown_path = output_dir / "configuration_sources.md"
+    json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(render_markdown(payload), encoding="utf-8")
+    return json_path, markdown_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
@@ -696,13 +710,7 @@ def main() -> int:
     ast_path = args.ast_artifact if args.ast_artifact.is_absolute() else workspace / args.ast_artifact
     output_dir = args.output_dir if args.output_dir.is_absolute() else workspace / args.output_dir
     payload = detect(ast_path, workspace)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "configuration_sources.json").write_text(
-        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
-    )
-    (output_dir / "configuration_sources.md").write_text(
-        render_markdown(payload), encoding="utf-8"
-    )
+    write_detection_artifacts(payload, output_dir)
     return 1 if payload["parse_failures"] else 0
 
 

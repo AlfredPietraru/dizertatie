@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract scoped AST facts from modules selected by 00_repo_ingestion.py."""
+"""Extract scoped AST facts from modules selected by the ingestion stage."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from helper_scripts.ast_intermediate import ast_to_json
+from .ast_intermediate import ast_to_json
 
 
 SCOPE_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
@@ -298,7 +298,11 @@ def extract(index_path: Path, workspace: Path) -> dict[str, Any]:
         "schema_version": 1,
         "stage": "scoped_ast_extraction",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source_index": index_path.relative_to(workspace).as_posix(),
+        "source_index": (
+            index_path.relative_to(workspace).as_posix()
+            if index_path.is_relative_to(workspace)
+            else index_path.as_posix()
+        ),
         "scope_policy": {
             "input_modules_from_previous_index": True,
             "follow_imports": False,
@@ -349,6 +353,16 @@ def render_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def write_ast_artifacts(payload: dict[str, Any], output_dir: Path) -> tuple[Path, Path]:
+    """Write scoped AST extraction artifacts and return their paths."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "ast_extraction.json"
+    markdown_path = output_dir / "ast_extraction.md"
+    json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    markdown_path.write_text(render_markdown(payload), encoding="utf-8")
+    return json_path, markdown_path
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
@@ -371,13 +385,7 @@ def main() -> int:
     index_path = args.index if args.index.is_absolute() else workspace / args.index
     output_dir = args.output_dir if args.output_dir.is_absolute() else workspace / args.output_dir
     payload = extract(index_path, workspace)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "ast_extraction.json").write_text(
-        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
-    )
-    (output_dir / "ast_extraction.md").write_text(
-        render_markdown(payload), encoding="utf-8"
-    )
+    write_ast_artifacts(payload, output_dir)
     return 1 if payload["parse_failures"] else 0
 
 

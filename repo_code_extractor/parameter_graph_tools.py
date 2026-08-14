@@ -8,23 +8,24 @@ import ast
 import hashlib
 import json
 import os
-import subprocess
+import re
 import sys
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Iterable
 
-from ast_intermediate import ast_from_json
-from parameter_context_compiler import compile_parameter_context
+from .api import extract_code_information
+from .ast_intermediate import ast_from_json
+from .parameter_context_compiler import compile_parameter_context
 
 
-PIPELINE_SCRIPTS = (
-    "00_repo_ingestion.py",
-    "01_repo_ast_extraction.py",
-    "02_repo_config_detection.py",
-    "03_repo_value_flow.py",
+PIPELINE_DEPENDENCIES = (
+    "repo_code_extractor/ingestion.py",
+    "repo_code_extractor/ast_extraction.py",
+    "repo_code_extractor/config_detection.py",
+    "repo_code_extractor/value_flow.py",
+    "repo_code_extractor/ast_intermediate.py",
 )
-PIPELINE_DEPENDENCIES = PIPELINE_SCRIPTS + ("helper_scripts/ast_intermediate.py",)
 
 ARTIFACT_DIRECTORY = Path("artifacts/repo_ingestion")
 MODULE_INDEX = ARTIFACT_DIRECTORY / "module_index.json"
@@ -143,30 +144,23 @@ def artifact_staleness(root: Path) -> list[str]:
 
 
 def regenerate_pipeline(root: Path, reasons: list[str]) -> dict[str, Any]:
-    stages: list[dict[str, Any]] = []
-    for script_name in PIPELINE_SCRIPTS:
-        result = subprocess.run(
-            [sys.executable, script_name],
-            cwd=root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        stage = {
-            "script": script_name,
-            "return_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        }
-        stages.append(stage)
-        if result.returncode != 0:
-            raise RuntimeError(
-                "Analysis regeneration failed:\n" + json.dumps(
-                    {"reasons": reasons, "failed_stage": stage, "stages": stages},
-                    indent=2,
-                )
-            )
-    return {"performed": True, "reasons": reasons, "stages": stages}
+    result = extract_code_information(
+        root,
+        output_directory=ARTIFACT_DIRECTORY,
+        include_chunks=False,
+        include_static_analysis=False,
+    )
+    return {
+        "performed": True,
+        "reasons": reasons,
+        "stages": [
+            {
+                "script": "repo_code_extractor.extract_code_information",
+                "return_code": 0,
+                "summaries": result.summaries,
+            }
+        ],
+    }
 
 
 def ensure_current_artifacts(root: Path) -> dict[str, Any]:
@@ -380,10 +374,10 @@ def similar_parameter_names(graph: GraphIndex, query: str) -> list[str]:
 def get_parameter_flow(
     name: str,
     *,
-    repo_root: Path | None = None,
+    repo_root: str | Path | None = None,
     refresh: bool = True,
 ) -> dict[str, Any]:
-    root = (repo_root or repository_root()).resolve()
+    root = Path(repo_root).resolve() if repo_root is not None else repository_root().resolve()
     regeneration = ensure_current_artifacts(root) if refresh else {
         "performed": False,
         "reasons": ["refresh disabled"],
@@ -506,10 +500,10 @@ def get_parameter_relationship(
     name_a: str,
     name_b: str,
     *,
-    repo_root: Path | None = None,
+    repo_root: str | Path | None = None,
     refresh: bool = True,
 ) -> dict[str, Any]:
-    root = (repo_root or repository_root()).resolve()
+    root = Path(repo_root).resolve() if repo_root is not None else repository_root().resolve()
     regeneration = ensure_current_artifacts(root) if refresh else {
         "performed": False,
         "reasons": ["refresh disabled"],
@@ -563,11 +557,11 @@ def get_parameter_relationship(
 def get_parameter_context(
     name: str,
     *,
-    repo_root: Path | None = None,
+    repo_root: str | Path | None = None,
     refresh: bool = True,
 ) -> dict[str, Any]:
     """Run retrieval tools and compile their verbose results for LLM consumption."""
-    root = (repo_root or repository_root()).resolve()
+    root = Path(repo_root).resolve() if repo_root is not None else repository_root().resolve()
     flow = get_parameter_flow(name, repo_root=root, refresh=refresh)
     relationship = None
     if flow["status"] == "ok" and len(flow.get("matches", {})) > 1:
@@ -589,6 +583,56 @@ def get_parameter_context(
         **compiled,
         "similar_names": flow.get("similar_names", []),
     }
+
+
+def safe_parameter_name(name: str) -> str:
+    """Return a filesystem-safe, readable directory name for a parameter."""
+    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", name.strip())
+    normalized = normalized.strip("._-")
+    return normalized or "unnamed_parameter"
+
+
+def write_parameter_artifacts(
+    name: str,
+    result: dict[str, Any],
+    *,
+    repo_root: str | Path | None = None,
+    output_root: str | Path = Path("artifacts/code_parameters"),
+) -> dict[str, Path]:
+    """Save structured and readable evidence under a parameter-specific folder."""
+    root = Path(repo_root).resolve() if repo_root is not None else repository_root().resolve()
+    base = Path(output_root)
+    if not base.is_absolute():
+        base = root / base
+    destination = base / safe_parameter_name(name)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    context_path = destination / "context.md"
+    result_path = destination / "result.json"
+    context_path.write_text(result.get("llm_context", ""), encoding="utf-8")
+    result_path.write_text(
+        json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return {
+        "directory": destination,
+        "context": context_path,
+        "result": result_path,
+    }
+
+
+def extract_parameter_artifacts(
+    name: str,
+    *,
+    repo_root: str | Path | None = None,
+    output_root: str | Path = Path("artifacts/code_parameters"),
+    refresh: bool = True,
+) -> dict[str, Any]:
+    """Extract one parameter's evidence, save it, and return result plus paths."""
+    result = get_parameter_context(name, repo_root=repo_root, refresh=refresh)
+    paths = write_parameter_artifacts(
+        name, result, repo_root=repo_root, output_root=output_root
+    )
+    return {**result, "artifact_paths": paths}
 
 
 def write_result(result: dict[str, Any], output: Path | None, root: Path) -> None:
@@ -636,9 +680,11 @@ def main() -> int:
             refresh=refresh,
         )
     else:
-        result = get_parameter_context(args.parameter, repo_root=root, refresh=refresh)
+        result = extract_parameter_artifacts(
+            args.parameter, repo_root=root, refresh=refresh
+        )
         if args.output is None:
-            sys.stdout.write(result["llm_context"])
+            print(result["artifact_paths"]["directory"])
         else:
             destination = args.output if args.output.is_absolute() else root / args.output
             destination.parent.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,7 @@ load_dotenv()
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST_PATH")
 OLLAMA_MODEL = "qwen2.5-coder:7b"
+OLLAMA_CONTEXT_LENGTH = 32768
 
 
 def call_model(system_prompt: str, user_prompt: str) -> str:
@@ -31,6 +32,9 @@ def call_model(system_prompt: str, user_prompt: str) -> str:
             },
         ],
         "stream": False,
+        "options": {
+            "num_ctx": OLLAMA_CONTEXT_LENGTH,
+        },
     }
 
     response = requests.post(url, json=payload, timeout=300)
