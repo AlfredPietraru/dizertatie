@@ -1,0 +1,14 @@
+{
+  "fixed_values": {
+    "nodes.joint_state_estimator.wheel_radius": 0.03,
+    "nodes.joint_state_estimator.wheel_separation": 0.219,
+    "nodes.rdrive_node.encoder_cpr_left": 2940,
+    "nodes.rdrive_node.encoder_cpr_right": 2940,
+    "nodes.rdrive_node.no_load_rpm_left": 60.0,
+    "nodes.rdrive_node.no_load_rpm_right": 60.0,
+    "nodes.rdrive_node.wheel_radius": 0.03,
+    "nodes.rdrive_node.wheel_separation": 0.219
+  },
+  "platform": "antrobot",
+  "schema_version": "1.0"
+}

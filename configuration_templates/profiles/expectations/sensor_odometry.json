@@ -1,0 +1,12 @@
+{
+  "scenario": "sensor_odometry",
+  "changed_values": {
+    "launch.launch_kinematic_icp": false,
+    "launch.launch_kiss_icp": true,
+    "launch.launch_laserscan_to_pointcloud": true
+  },
+  "enabled_executables": ["kiss_icp_node", "laserscan_to_pointcloud_node"],
+  "disabled_executables": ["kinematic_icp_online_node"],
+  "parameter_changes": {},
+  "required_edges": [["topic", "/odom_wheel", "nav_msgs.msg.Odometry"]]
+}

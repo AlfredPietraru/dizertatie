@@ -1,0 +1,11 @@
+{
+  "scenario": "mapping_navigation",
+  "changed_values": {},
+  "enabled_executables": [],
+  "disabled_executables": [],
+  "parameter_changes": {},
+  "required_edges": [["topic", "/odom_wheel", "nav_msgs.msg.Odometry"]],
+  "known_limitations": [
+    "Nav2 internals remain external and are not inferred"
+  ]
+}

@@ -1,0 +1,105 @@
+rdrive:
+  ros__parameters:
+    wheel_radius: {{ platform["nodes.rdrive_node.wheel_radius"] | yaml_scalar }}
+    wheel_separation: {{ platform["nodes.rdrive_node.wheel_separation"] | yaml_scalar }}
+    encoder_cpr_left: {{ platform["nodes.rdrive_node.encoder_cpr_left"] | yaml_scalar }}
+    encoder_cpr_right: {{ platform["nodes.rdrive_node.encoder_cpr_right"] | yaml_scalar }}
+    no_load_rpm_left: {{ platform["nodes.rdrive_node.no_load_rpm_left"] | yaml_scalar }}
+    no_load_rpm_right: {{ platform["nodes.rdrive_node.no_load_rpm_right"] | yaml_scalar }}
+    odom_frequency: {{ values["nodes.rdrive_node.odom_frequency"] | yaml_scalar }}
+    odom_topic: {{ derived["wiring.odom_wheel_topic"] | yaml_scalar }}
+    publish_tf: {{ values["nodes.rdrive_node.publish_tf"] | yaml_scalar }}
+    invert_odom_tf: {{ values["nodes.rdrive_node.invert_odom_tf"] | yaml_scalar }}
+    odom_frame_id: {{ derived["wiring.odom_wheel_frame"] | yaml_scalar }}
+    base_frame_id: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    enable_jump_correction: {{ values["nodes.rdrive_node.enable_jump_correction"] | yaml_scalar }}
+    max_linear_jump: {{ values["nodes.rdrive_node.max_linear_jump"] | yaml_scalar }}
+    max_angular_jump: {{ values["nodes.rdrive_node.max_angular_jump"] | yaml_scalar }}
+    max_velocity_jump: {{ values["nodes.rdrive_node.max_velocity_jump"] | yaml_scalar }}
+rplidar:
+  ros__parameters:
+    serial_port: "/dev/ttyUSB0"
+    serial_baudrate: 115200
+    frame_id: "rplidar_link"
+    inverted: false
+    angle_compensate: true
+    scan_mode: "Sensitivity"
+joint_state_estimator:
+  ros__parameters:
+    odom: {{ derived["wiring.odom_wheel_topic"] | yaml_scalar }}
+    joint_states_topic: {{ derived["wiring.joint_states_topic"] | yaml_scalar }}
+    use_icp_estimation: {{ values["nodes.joint_state_estimator.use_icp_estimation"] | yaml_scalar }}
+    wheel_velocity_correction_factor: {{ values["nodes.joint_state_estimator.wheel_velocity_correction_factor"] | yaml_scalar }}
+    wheel_radius: {{ platform["nodes.joint_state_estimator.wheel_radius"] | yaml_scalar }}
+    wheel_separation: {{ platform["nodes.joint_state_estimator.wheel_separation"] | yaml_scalar }}
+    publish_frequency: {{ values["nodes.joint_state_estimator.publish_frequency"] | yaml_scalar }}
+robot_state:
+  ros__parameters:
+    description_package: "antrobot_description"
+    description_file: "antrobot.xacro"
+    joint_states_topic: "joint_states"
+    publish_frequency: 20.0
+    ignore_timestamp: false
+    frame_prefix: ""
+tf_static:
+  ros__parameters:
+    transforms: [{"parent_frame": "base_link", "child_frame": "base_footprint", "translation": [0.0, 0.0, -0.035], "rotation": [0.0, 0.0, 0.0]}, {"parent_frame": "base_link", "child_frame": "laser_link", "translation": [0.0, 0.0, 0.155], "rotation": [0.0, 0.0, 0.0]}]
+    publish_transforms: false
+laserscan_to_pointcloud:
+  ros__parameters:
+    scan_topic: {{ derived["wiring.scan_topic"] | yaml_scalar }}
+    pointcloud_topic: {{ derived["wiring.scan_pointcloud_topic"] | yaml_scalar }}
+    include_point_timestamp: {{ values["nodes.laserscan_to_pointcloud.include_point_timestamp"] | yaml_scalar }}
+kiss_icp:
+  ros__parameters:
+    odom_topic: {{ derived["wiring.odom_topic"] | yaml_scalar }}
+    base_frame: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    lidar_odom_frame: {{ derived["wiring.odom_frame"] | yaml_scalar }}
+    publish_odom_tf: {{ values["nodes.kiss_icp.publish_odom_tf"] | yaml_scalar }}
+    invert_odom_tf: {{ values["nodes.kiss_icp.invert_odom_tf"] | yaml_scalar }}
+    max_range: {{ values["nodes.kiss_icp.max_range"] | yaml_scalar }}
+    min_range: {{ values["nodes.kiss_icp.min_range"] | yaml_scalar }}
+    deskew: {{ values["nodes.kiss_icp.deskew"] | yaml_scalar }}
+    max_points_per_voxel: {{ values["nodes.kiss_icp.max_points_per_voxel"] | yaml_scalar }}
+    voxel_size: {{ values["nodes.kiss_icp.voxel_size"] | yaml_scalar }}
+    initial_threshold: {{ values["nodes.kiss_icp.initial_threshold"] | yaml_scalar }}
+    min_motion_th: {{ values["nodes.kiss_icp.min_motion_th"] | yaml_scalar }}
+    max_num_iterations: {{ values["nodes.kiss_icp.max_num_iterations"] | yaml_scalar }}
+    convergence_criterion: {{ values["nodes.kiss_icp.convergence_criterion"] | yaml_scalar }}
+    max_num_threads: {{ values["nodes.kiss_icp.max_num_threads"] | yaml_scalar }}
+    position_covariance: {{ values["nodes.kiss_icp.position_covariance"] | yaml_scalar }}
+    orientation_covariance: {{ values["nodes.kiss_icp.orientation_covariance"] | yaml_scalar }}
+    publish_debug_clouds: {{ values["nodes.kiss_icp.publish_debug_clouds"] | yaml_scalar }}
+    use_sim_time: {{ values["nodes.kiss_icp.use_sim_time"] | yaml_scalar }}
+kinematic_icp:
+  ros__parameters:
+    lidar_topic: {{ derived["wiring.scan_topic"] | yaml_scalar }}
+    use_2d_lidar: {{ values["nodes.kinematic_icp.use_2d_lidar"] | yaml_scalar }}
+    lidar_odometry_topic: {{ derived["wiring.odom_topic"] | yaml_scalar }}
+    lidar_odom_frame: {{ derived["wiring.odom_frame"] | yaml_scalar }}
+    wheel_odom_frame: {{ derived["wiring.odom_wheel_frame"] | yaml_scalar }}
+    base_frame: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    publish_odom_tf: {{ values["nodes.kinematic_icp.publish_odom_tf"] | yaml_scalar }}
+    invert_odom_tf: {{ values["nodes.kinematic_icp.invert_odom_tf"] | yaml_scalar }}
+    visualize: {{ values["nodes.kinematic_icp.visualize"] | yaml_scalar }}
+    tf_timeout: {{ values["nodes.kinematic_icp.tf_timeout"] | yaml_scalar }}
+    use_sim_time: {{ values["nodes.kinematic_icp.use_sim_time"] | yaml_scalar }}
+    max_range: {{ values["nodes.kinematic_icp.max_range"] | yaml_scalar }}
+    min_range: {{ values["nodes.kinematic_icp.min_range"] | yaml_scalar }}
+    voxel_size: {{ values["nodes.kinematic_icp.voxel_size"] | yaml_scalar }}
+    max_points_per_voxel: {{ values["nodes.kinematic_icp.max_points_per_voxel"] | yaml_scalar }}
+    use_adaptive_threshold: {{ values["nodes.kinematic_icp.use_adaptive_threshold"] | yaml_scalar }}
+    fixed_threshold: {{ values["nodes.kinematic_icp.fixed_threshold"] | yaml_scalar }}
+    max_num_iterations: {{ values["nodes.kinematic_icp.max_num_iterations"] | yaml_scalar }}
+    convergence_criterion: {{ values["nodes.kinematic_icp.convergence_criterion"] | yaml_scalar }}
+    max_num_threads: {{ values["nodes.kinematic_icp.max_num_threads"] | yaml_scalar }}
+    use_adaptive_odometry_regularization: {{ values["nodes.kinematic_icp.use_adaptive_odometry_regularization"] | yaml_scalar }}
+    fixed_regularization: {{ values["nodes.kinematic_icp.fixed_regularization"] | yaml_scalar }}
+    deskew: {{ values["nodes.kinematic_icp.deskew"] | yaml_scalar }}
+    orientation_covariance: {{ values["nodes.kinematic_icp.orientation_covariance"] | yaml_scalar }}
+    position_covariance: {{ values["nodes.kinematic_icp.position_covariance"] | yaml_scalar }}
+cartographer:
+  ros__parameters:
+    config_file: "antrobot_cartographer_2d.lua"
+    resolution: 0.05
+    publish_period_sec: 1.0

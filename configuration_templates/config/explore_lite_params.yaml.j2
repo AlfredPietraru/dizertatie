@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    enable_explore_lite: {{ values["nodes.explore_lite_map_converter.enable_explore_lite"] | yaml_scalar }}
+    free_threshold: {{ values["nodes.explore_lite_map_converter.free_threshold"] | yaml_scalar }}
+    occupied_threshold: {{ values["nodes.explore_lite_map_converter.occupied_threshold"] | yaml_scalar }}
+    use_knn: {{ values["nodes.explore_lite_map_converter.use_knn"] | yaml_scalar }}
+    input_map_topic: {{ derived["wiring.map_topic"] | yaml_scalar }}
+    input_map_updates_topic: {{ derived["wiring.map_updates_topic"] | yaml_scalar }}
+    output_map_topic: {{ derived["wiring.map_explore_topic"] | yaml_scalar }}
+    output_map_updates_topic: {{ derived["wiring.map_updates_explore_topic"] | yaml_scalar }}
+    publish_rate: {{ values["nodes.explore_lite_map_converter.publish_rate"] | yaml_scalar }}
+    robot_base_frame: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    return_to_init: {{ values["nodes.explore_lite_map_converter.return_to_init"] | yaml_scalar }}
+    costmap_topic: {{ derived["wiring.map_explore_topic"] | yaml_scalar }}
+    costmap_updates_topic: {{ derived["wiring.map_updates_explore_topic"] | yaml_scalar }}
+    visualize: {{ values["nodes.explore_lite_map_converter.visualize"] | yaml_scalar }}
+    planner_frequency: {{ values["nodes.explore_lite_map_converter.planner_frequency"] | yaml_scalar }}
+    progress_timeout: {{ values["nodes.explore_lite_map_converter.progress_timeout"] | yaml_scalar }}
+    potential_scale: {{ values["nodes.explore_lite_map_converter.potential_scale"] | yaml_scalar }}
+    orientation_scale: {{ values["nodes.explore_lite_map_converter.orientation_scale"] | yaml_scalar }}
+    gain_scale: {{ values["nodes.explore_lite_map_converter.gain_scale"] | yaml_scalar }}
+    transform_tolerance: {{ values["nodes.explore_lite_map_converter.transform_tolerance"] | yaml_scalar }}
+    min_frontier_size: {{ values["nodes.explore_lite_map_converter.min_frontier_size"] | yaml_scalar }}

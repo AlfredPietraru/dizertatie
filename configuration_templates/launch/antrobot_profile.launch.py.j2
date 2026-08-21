@@ -1,0 +1,26 @@
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.substitutions import FindPackageShare
+import os
+
+def generate_launch_description():
+    source = os.path.join(FindPackageShare('antrobot_ros').find('antrobot_ros'), 'launch', 'antrobot.launch.py')
+    include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(source),
+        launch_arguments={
+            'explore_lite': {{ values["launch.explore_lite"] | ros_launch_value }},
+            'launch_cartographer': {{ values["launch.launch_cartographer"] | ros_launch_value }},
+            'launch_joint_state_estimator': {{ values["launch.launch_joint_state_estimator"] | ros_launch_value }},
+            'launch_kinematic_icp': {{ values["launch.launch_kinematic_icp"] | ros_launch_value }},
+            'launch_kiss_icp': {{ values["launch.launch_kiss_icp"] | ros_launch_value }},
+            'launch_laserscan_to_pointcloud': {{ values["launch.launch_laserscan_to_pointcloud"] | ros_launch_value }},
+            'launch_nav2': {{ values["launch.launch_nav2"] | ros_launch_value }},
+            'launch_rdrive': {{ values["launch.launch_rdrive"] | ros_launch_value }},
+            'launch_robot_state': {{ values["launch.launch_robot_state"] | ros_launch_value }},
+            'launch_rplidar': {{ values["launch.launch_rplidar"] | ros_launch_value }},
+            'launch_tf_static_link': {{ values["launch.launch_tf_static_link"] | ros_launch_value }},
+            'namespace': {{ values["launch.namespace"] | ros_launch_value }},
+        }.items(),
+    )
+    return LaunchDescription([include])

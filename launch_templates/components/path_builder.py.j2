@@ -1,4 +1,0 @@
-{% macro build_package_path(path) %}    {{ path.result_name }} = os.path.join(
-        get_package_share_directory('{{ path.package }}'),
-{% for segment in path.segments %}        '{{ segment }}'{% if not loop.last %},{% endif %}
-{% endfor %}    ){%- endmacro %}

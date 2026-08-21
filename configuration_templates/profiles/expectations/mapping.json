@@ -1,0 +1,13 @@
+{
+  "scenario": "mapping",
+  "changed_values": {
+    "launch.launch_nav2": false
+  },
+  "enabled_executables": [],
+  "disabled_executables": [],
+  "parameter_changes": {},
+  "required_edges": [["topic", "/odom_wheel", "nav_msgs.msg.Odometry"]],
+  "known_limitations": [
+    "nav2_bringup source is external, so disabling Nav2 is observable in configuration context but not as local node removal"
+  ]
+}
