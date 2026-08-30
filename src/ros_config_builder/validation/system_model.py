@@ -11,6 +11,11 @@ from typing import Any
 def validate_system_model(model: dict[str, Any]) -> dict[str, Any]:
     """Validate cross-references and report coverage without guessing behavior."""
     errors, warnings = [], []
+    if model.get("schema_version") != "1.0":
+        errors.append(
+            "unsupported system model schema version "
+            f"{model.get('schema_version')!r}; expected '1.0'"
+        )
     instances = model.get("deployment_instances", [])
     ids = [item.get("instance_id") for item in instances]
     if len(ids) != len(set(ids)): errors.append("deployment instance IDs are not unique")

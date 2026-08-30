@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..schemas.deployment import ConfigurationPayload, LaunchPayload, SCHEMA_VERSION
+from ..schemas.deployment import ConfigurationPayload, LaunchPayload
 
 
 IGNORED = {".git", "build", "install", "log", "__pycache__", ".venv", "venv"}
@@ -204,7 +204,7 @@ def extract_launch_files(workspace: str | Path, *, source_roots: Iterable[str | 
                "nodes": sum(len(x["nodes"]) for x in records), "includes": sum(len(x["includes"]) for x in records),
                "unresolved_expressions": sum(len(x["unresolved_expressions"]) for x in records),
                "parse_failures": len(failures)}
-    payload = {"schema_version": SCHEMA_VERSION, "stage": "ros_launch_static_extraction",
+    payload = {"stage": "ros_launch_static_extraction",
                "summary": summary, "parse_failures": failures, "launch_files": records}
     return LaunchPayload.model_validate(payload).model_dump(mode="json")
 
@@ -324,7 +324,7 @@ def extract_parameter_yaml(workspace: str | Path, *, source_roots: Iterable[str 
     summary = {"yaml_files": len(paths), "profiles": len(profiles),
                "parameters": sum(len(x["flattened_parameters"]) for x in profiles),
                "parse_failures": len(failures)}
-    payload = {"schema_version": SCHEMA_VERSION, "stage": "ros_yaml_configuration_extraction",
+    payload = {"stage": "ros_yaml_configuration_extraction",
                "summary": summary, "parse_failures": failures, "profiles": profiles}
     return ConfigurationPayload.model_validate(payload).model_dump(mode="json")
 

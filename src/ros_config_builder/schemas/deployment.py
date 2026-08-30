@@ -9,9 +9,6 @@ from pydantic import Field
 from .ros import IRModel, SourceLocation
 
 
-SCHEMA_VERSION = "1.0"
-
-
 class LaunchFileIR(IRModel):
     id: str
     file: str
@@ -22,7 +19,6 @@ class LaunchFileIR(IRModel):
 
 
 class LaunchPayload(IRModel):
-    schema_version: str = SCHEMA_VERSION
     stage: Literal["ros_launch_static_extraction"]
     summary: dict[str, int]
     parse_failures: list[dict[str, str]]
@@ -40,7 +36,6 @@ class ParameterProfileIR(IRModel):
 
 
 class ConfigurationPayload(IRModel):
-    schema_version: str = SCHEMA_VERSION
     stage: Literal["ros_yaml_configuration_extraction"]
     summary: dict[str, int]
     parse_failures: list[dict[str, str]]

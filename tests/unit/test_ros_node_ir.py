@@ -86,7 +86,6 @@ class ModuleIRTests(unittest.TestCase):
             package.mkdir(parents=True)
             (package / "nodes.py").write_text(SOURCE, encoding="utf-8")
             payload = extract_ros_node_ir(root)
-        self.assertEqual(payload["schema_version"], "1.0")
         self.assertEqual(payload["summary"]["nodes"], 2)
         node = next(item for item in payload["nodes"] if item["class_name"] == "Demo")
         self.assertEqual(node["node_name"]["resolved_value"], "demo")

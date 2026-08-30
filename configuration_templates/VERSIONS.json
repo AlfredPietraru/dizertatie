@@ -1,8 +1,12 @@
 {
+  "artifact_generator": "1.0",
   "ros_system_model_schema": "1.0",
-  "template_configuration_schema": "1.0",
-  "template_manifest": "1.0",
-  "antrobot_platform_profile": "1.0",
-  "baseline_scenario": "1.0",
-  "renderer_validation_pipeline": "1.0-baseline-accepted"
+  "semantic_configuration_model": "3.0",
+  "template_manifest": "3.0",
+  "capability_registry": "2.0",
+  "baseline_scenario": "3.0",
+  "renderer_validation_pipeline": "3.0-lean",
+  "parameter_evidence": "1.0",
+  "semantic_enrichment": "1.0",
+  "parameter_reasoning_dataset": "1.0"
 }

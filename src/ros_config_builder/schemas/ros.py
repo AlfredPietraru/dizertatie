@@ -11,9 +11,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-SCHEMA_VERSION = "1.0"
-
-
 class IRModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -52,7 +49,6 @@ class ModuleMetadata(IRModel):
 
 
 class ModuleIR(IRModel):
-    schema_version: str = SCHEMA_VERSION
     module: ModuleMetadata
     imports: dict[str, ImportIR]
     global_assignments: list[dict[str, Any]] = Field(default_factory=list)
@@ -64,7 +60,6 @@ class ModuleIR(IRModel):
 
 
 class ROSNodeIR(IRModel):
-    schema_version: str = SCHEMA_VERSION
     id: str
     class_name: str
     qualified_class: str
@@ -86,7 +81,6 @@ class ROSNodeIR(IRModel):
 
 
 class Step1Payload(IRModel):
-    schema_version: str = SCHEMA_VERSION
     stage: Literal["python_ros_static_extraction"]
     boundary: dict[str, bool]
     summary: dict[str, int]

@@ -1,0 +1,172 @@
+{
+  "schema_version": "2.0",
+  "robot": "antrobot",
+  "baseline_components": [
+    "cartographer_node",
+    "occupancy_grid_node",
+    "joint_state_estimator",
+    "kinematic_icp",
+    "nav2",
+    "robot_state_publisher",
+    "rplidar_node",
+    "rdrive_node"
+  ],
+  "capabilities": {
+    "mapping": {
+      "description": "Build and update a map of the environment.",
+      "default_implementation": "cartographer",
+      "disable_overrides": {"launch.launch_cartographer": false},
+      "component_family": ["cartographer_node", "occupancy_grid_node"],
+      "implementations": {
+        "cartographer": {
+          "description": "Cartographer SLAM using AntRobot's supported laser-based mapping stack.",
+          "characteristics": {
+            "input": ["laser scan", "odometry", "TF"],
+            "use_when": ["the mission requests mapping or SLAM"]
+          },
+          "components": [
+            {"component_id": "cartographer_node", "dependency": false},
+            {"component_id": "occupancy_grid_node", "dependency": true}
+          ],
+          "required_connections": [],
+          "realization": {"launch.launch_cartographer": true}
+        }
+      }
+    },
+    "navigation": {
+      "description": "Plan and execute robot motion through a mapped environment.",
+      "default_implementation": "nav2",
+      "disable_overrides": {"launch.launch_nav2": false},
+      "component_family": ["nav2"],
+      "implementations": {
+        "nav2": {
+          "description": "ROS 2 Navigation2 stack supported by AntRobot.",
+          "characteristics": {
+            "use_when": ["the mission requests autonomous navigation or path planning"]
+          },
+          "components": [
+            {"component_id": "nav2", "dependency": false}
+          ],
+          "required_connections": [],
+          "realization": {"launch.launch_nav2": true}
+        }
+      }
+    },
+    "exploration": {
+      "description": "Autonomously choose frontiers to explore unmapped space.",
+      "default_implementation": "explore_lite",
+      "disable_overrides": {
+        "launch.enable_explore_lite": false,
+        "launch.explore_lite": false
+      },
+      "component_family": ["explore", "explore_lite_map_converter"],
+      "requires_capabilities": ["mapping"],
+      "implementations": {
+        "explore_lite": {
+          "description": "Frontier-based exploration using the supported explore_lite component.",
+          "characteristics": {
+            "requires": ["mapping"],
+            "use_when": ["the mission explicitly requests exploration"]
+          },
+          "components": [
+            {"component_id": "explore", "dependency": false},
+            {"component_id": "explore_lite_map_converter", "dependency": true}
+          ],
+          "required_connections": [
+            {
+              "connection_id": "exploration_map_input",
+              "source_component": "occupancy_grid_node",
+              "target_component": "explore_lite_map_converter",
+              "wiring_binding": "wiring.map_topic",
+              "interface_type": "nav_msgs.msg.OccupancyGrid",
+              "semantic_interface": "occupancy map"
+            },
+            {
+              "connection_id": "exploration_converted_map",
+              "source_component": "explore_lite_map_converter",
+              "target_component": "explore",
+              "wiring_binding": "wiring.map_explore_topic",
+              "interface_type": "nav_msgs.msg.OccupancyGrid",
+              "semantic_interface": "exploration map"
+            }
+          ],
+          "realization": {
+            "launch.enable_explore_lite": true,
+            "launch.explore_lite": true
+          }
+        }
+      }
+    },
+    "odometry": {
+      "description": "Estimate robot motion for localization and mapping.",
+      "default_implementation": "kinematic_icp",
+      "disable_overrides": {
+        "launch.launch_kinematic_icp": false,
+        "launch.launch_kiss_icp": false,
+        "launch.launch_laserscan_to_pointcloud": false
+      },
+      "component_family": ["kinematic_icp", "kiss_icp", "laserscan_to_pointcloud"],
+      "implementations": {
+        "kinematic_icp": {
+          "description": "AntRobot's kinematic ICP odometry implementation.",
+          "characteristics": {
+            "input": ["laser scan", "robot kinematics"],
+            "use_when": ["kinematic ICP is explicitly requested", "no other odometry requirement is stated"]
+          },
+          "components": [
+            {"component_id": "kinematic_icp", "dependency": false}
+          ],
+          "required_connections": [
+            {
+              "connection_id": "kinematic_icp_scan_input",
+              "source_component": "rplidar_node",
+              "target_component": "kinematic_icp",
+              "wiring_binding": "wiring.scan_topic",
+              "interface_type": "sensor_msgs.msg.LaserScan",
+              "semantic_interface": "laser scan"
+            }
+          ],
+          "realization": {
+            "launch.launch_kinematic_icp": true,
+            "launch.launch_kiss_icp": false,
+            "launch.launch_laserscan_to_pointcloud": false
+          }
+        },
+        "kiss_icp": {
+          "description": "KISS-ICP point-cloud odometry supported by AntRobot.",
+          "characteristics": {
+            "input": ["point cloud"],
+            "use_when": ["KISS-ICP is explicitly requested", "the mission explicitly requires point-cloud ICP odometry"]
+          },
+          "components": [
+            {"component_id": "kiss_icp", "dependency": false},
+            {"component_id": "laserscan_to_pointcloud", "dependency": true}
+          ],
+          "required_connections": [
+            {
+              "connection_id": "pointcloud_converter_scan_input",
+              "source_component": "rplidar_node",
+              "target_component": "laserscan_to_pointcloud",
+              "wiring_binding": "wiring.scan_topic",
+              "interface_type": "sensor_msgs.msg.LaserScan",
+              "semantic_interface": "laser scan"
+            },
+            {
+              "connection_id": "kiss_icp_pointcloud_input",
+              "source_component": "laserscan_to_pointcloud",
+              "target_component": "kiss_icp",
+              "wiring_binding": "wiring.scan_pointcloud_topic",
+              "interface_type": "sensor_msgs.msg.PointCloud2",
+              "semantic_interface": "point cloud"
+            }
+          ],
+          "realization": {
+            "launch.launch_kinematic_icp": false,
+            "launch.launch_kiss_icp": true,
+            "launch.launch_laserscan_to_pointcloud": true
+          }
+        }
+      }
+    }
+  }
+}

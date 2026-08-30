@@ -32,6 +32,14 @@ class ArchitectureTests(unittest.TestCase):
                 offenders.append(source.as_posix())
         self.assertEqual([], offenders)
 
+    def test_application_entrypoint_is_yaml_configured(self) -> None:
+        source = Path("src/ros_config_builder/orchestrate.py").read_text(encoding="utf-8")
+        self.assertNotIn("import argparse", source)
+        self.assertIn("parameters.yaml", source)
+        self.assertNotIn("def main(", source)
+        packaging = Path("pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('ros-config-builder = "ros_config_builder.orchestrate:run"', packaging)
+
 
 if __name__ == "__main__":
     unittest.main()

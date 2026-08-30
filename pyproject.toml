@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ros-config-builder"
-version = "1.0.0"
-description = "Deterministic ROS 2 system-model construction and configuration rendering"
+version = "2.0.0"
+description = "Source-grounded LLM reasoning for ROS 2 parameter selection and configuration"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["jinja2>=3.1", "pydantic>=2"]
 
 [project.scripts]
-ros-config-builder = "ros_config_builder.cli:main"
+ros-config-builder = "ros_config_builder.orchestrate:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -19,3 +19,6 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ros_config_builder*"]
+
+[tool.setuptools.package-data]
+ros_config_builder = ["parameters.yaml"]

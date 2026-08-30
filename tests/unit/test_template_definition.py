@@ -6,12 +6,10 @@ from ros_config_builder import (
     build_system_model,
     build_template_configuration_schema,
     build_template_definition,
-    curate_template_configuration_schema,
     extract_launch_files,
     extract_package_metadata,
     extract_parameter_yaml,
     extract_ros_node_ir,
-    load_template_configuration_policy,
     validate_template_definition,
 )
 
@@ -26,26 +24,37 @@ class TemplateDefinitionTests(unittest.TestCase):
             launch=extract_launch_files(".", source_roots=roots), configuration=cls.configuration,
             package_metadata=extract_package_metadata(".", source_roots=["src"]),
             root_launch_files=["src/antrobot_ros/launch/antrobot.launch.py"])
-        candidate = build_template_configuration_schema(model)
-        cls.schema = curate_template_configuration_schema(candidate,
-            load_template_configuration_policy("policies/template_configuration_policy.yaml"))
+        cls.schema = build_template_configuration_schema(model)
 
-    def test_frozen_bundle_has_complete_coverage(self) -> None:
-        manifest, templates, platform, baseline = build_template_definition(self.schema, self.configuration)
-        coverage = validate_template_definition(manifest, templates, self.schema)
+    def test_source_derived_bundle_has_complete_coverage(self) -> None:
+        manifest, templates, baseline = build_template_definition(self.schema, self.configuration)
+        coverage = validate_template_definition(manifest, templates, baseline, self.schema)
         self.assertTrue(coverage["valid"])
-        self.assertEqual(coverage["public_inputs"], 93)
-        self.assertEqual(coverage["targeted_inputs"], 93)
-        self.assertEqual(coverage["derived_values"], 30)
-        self.assertEqual(coverage["bound_derived_values"], 30)
-        self.assertEqual(coverage["platform_fixed_values"], 8)
-        self.assertEqual(len(platform["fixed_values"]), 8)
-        self.assertEqual(len(baseline["values"]), 93)
+        self.assertEqual(
+            coverage["configuration_values"], self.schema["summary"]["configuration_values"]
+        )
+        self.assertEqual(
+            coverage["template_references"], self.schema["summary"]["configuration_values"]
+        )
+        self.assertEqual(
+            coverage["interface_parameters"], len(self.schema["interface_parameter_keys"])
+        )
+        self.assertEqual(
+            coverage["bound_interface_parameters"],
+            len(self.schema["interface_parameter_keys"]),
+        )
+        self.assertEqual(
+            len(baseline["values"]), self.schema["summary"]["configuration_values"]
+        )
         self.assertIn("launch/antrobot_profile.launch.py.j2", templates)
-        self.assertNotIn("launch.params_file", manifest["public_inputs"])
+        self.assertIn("launch.params_file", baseline["values"])
+        self.assertEqual(
+            set(manifest),
+            {"schema_version", "templates", "wiring_bindings", "baseline_profile"},
+        )
 
-    def test_unreviewed_schema_cannot_define_templates(self) -> None:
-        candidate = dict(self.schema); candidate["frozen"] = False
+    def test_incomplete_schema_cannot_define_templates(self) -> None:
+        candidate = dict(self.schema); candidate["complete"] = False
         with self.assertRaises(ValueError):
             build_template_definition(candidate, {"profiles": []})
 

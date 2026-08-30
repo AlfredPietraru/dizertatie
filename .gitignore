@@ -7,3 +7,4 @@ __pycache__
 artifacts
 launch_templates/launch_files
 launch_templates/yaml_files
+debug_output

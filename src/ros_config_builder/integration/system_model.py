@@ -7,14 +7,11 @@ import hashlib
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from pydantic import Field
 
 from ..schemas.ros import IRModel
-
-
-SCHEMA_VERSION = "1.0"
 
 
 class PackageMetadata(IRModel):
@@ -26,7 +23,7 @@ class PackageMetadata(IRModel):
 
 
 class SystemModel(IRModel):
-    schema_version: str = SCHEMA_VERSION
+    schema_version: Literal["1.0"] = "1.0"
     stage: str
     roots: list[str]
     packages: list[PackageMetadata]
@@ -91,7 +88,7 @@ def extract_package_metadata(workspace: str | Path, *, source_roots: Iterable[st
         packages.append({"name": name, "path": package_dir.relative_to(workspace).as_posix(),
                          "version": xml.findtext("version"), "dependencies": dependencies,
                          "executables": sorted(executables, key=lambda x: x["name"])})
-    return {"schema_version": SCHEMA_VERSION, "stage": "package_metadata_extraction",
+    return {"stage": "package_metadata_extraction",
             "packages": [PackageMetadata.model_validate(x).model_dump(mode="json") for x in packages]}
 
 
@@ -275,6 +272,8 @@ def build_system_model(*, workspace: str | Path, step1: dict[str, Any], launch: 
                             interfaces.append({"id": _id("deployed_interface", instance_id, endpoint["id"]),
                                 "source_ref": endpoint["id"], "role": role, "effective_name": effective_name,
                                 "name_transformation": transform,
+                                "controlling_parameter": parameter_name,
+                                "qos": endpoint.get("qos"),
                                 "type": (endpoint.get("message_type") or endpoint.get("service_type") or {}).get("resolved")})
             instances.append({"instance_id": instance_id, "package": package, "executable": executable,
                 "declared_node_name": declared_name, "effective_node_name": node_name,
@@ -315,7 +314,7 @@ def build_system_model(*, workspace: str | Path, step1: dict[str, Any], launch: 
                               "name": publisher["effective_name"], "type": publisher["type"],
                               "source_interface": publisher["id"], "target_interface": subscription["id"],
                               "confidence": "confirmed"})
-    payload = {"schema_version": SCHEMA_VERSION, "stage": "deployment_integration",
+    payload = {"stage": "deployment_integration",
         "roots": roots, "packages": metadata["packages"], "include_graph": include_graph,
         "launch_argument_graph": argument_graph, "deployment_instances": instances, "edges": edges,
         "unresolved_facts": unresolved, "summary": {"roots": len(roots), "packages": len(packages),

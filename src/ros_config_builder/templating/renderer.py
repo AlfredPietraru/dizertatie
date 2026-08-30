@@ -16,13 +16,13 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from ..extraction.deployment import _load_yaml, extract_launch_files, extract_parameter_yaml
 from ..extraction.python import extract_ros_node_ir
 from ..integration.system_model import build_system_model, extract_package_metadata
+from .definition import TemplateManifest
 
 
 def _all_variables(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    groups = schema.get("role_groups", {})
-    if groups: return {item["template_key"]: item for values in groups.values() for item in values}
-    values = schema["launch_options"] + schema["structural_values"] + schema["derived_values"] + schema["internal_values"]
-    values += [item for items in schema["node_parameters"].values() for item in items]
+    values = schema["launch_arguments"] + [
+        item for items in schema["node_parameters"].values() for item in items
+    ]
     return {item["template_key"]: item for item in values}
 
 
@@ -44,19 +44,18 @@ def _matches_type(value: Any, expected: str) -> bool:
     return True
 
 
-def validate_public_values(values: dict[str, Any], schema: dict[str, Any], manifest: dict[str, Any],
-                           *, layer: str) -> None:
-    variables = _all_variables(schema); public = set(manifest["public_inputs"])
+def validate_configuration_values(
+    values: dict[str, Any], schema: dict[str, Any], *, layer: str,
+) -> None:
+    """Validate proposed values against discovered facts and renderer capabilities."""
+    variables = _all_variables(schema)
+    configuration_keys = set(schema["configuration_keys"])
     errors = []
     for key, value in values.items():
         if key not in variables: errors.append(f"unknown key: {key}"); continue
         item = variables[key]
-        if key not in public:
-            reason = "derived" if item["classification"] == "derived" else "fixed/rejected"
-            errors.append(f"{key} is not public ({reason})"); continue
-        strategy = manifest["handling_strategies"][key]
-        if strategy["kind"] == "source_default" and value != strategy.get("value"):
-            errors.append(f"{key} cannot change until its child launch/source exposes an override")
+        if key not in configuration_keys:
+            errors.append(f"{key} is not part of the generated interface"); continue
         if not _matches_type(value, item["value_type"]):
             errors.append(f"{key} expects {item['value_type']}, got {type(value).__name__}")
         allowed = item.get("allowed_values")
@@ -67,13 +66,13 @@ def validate_public_values(values: dict[str, Any], schema: dict[str, Any], manif
     if errors: raise ValueError(f"Invalid {layer}: " + "; ".join(errors))
 
 
-def resolve_render_context(schema: dict[str, Any], manifest: dict[str, Any], platform: dict[str, Any],
-                           baseline: dict[str, Any], profile: dict[str, Any] | None = None,
+def resolve_render_context(schema: dict[str, Any], baseline: dict[str, Any],
+                           profile: dict[str, Any] | None = None,
                            user_values: dict[str, Any] | None = None) -> dict[str, Any]:
     profile = profile or {"values": {}}; user_values = user_values or {}
     baseline_values = dict(baseline.get("values", {})); profile_values = dict(profile.get("values", {}))
-    validate_public_values(profile_values, schema, manifest, layer="scenario profile")
-    validate_public_values(user_values, schema, manifest, layer="user input")
+    validate_configuration_values(profile_values, schema, layer="scenario profile")
+    validate_configuration_values(user_values, schema, layer="user input")
     provenance = {key: [{"stage": "schema_baseline", "value": value}]
                   for key, value in baseline_values.items()}
     resolved = dict(baseline_values)
@@ -81,26 +80,10 @@ def resolve_render_context(schema: dict[str, Any], manifest: dict[str, Any], pla
         for key, value in values.items():
             resolved[key] = value; provenance.setdefault(key, []).append({"stage": stage, "value": value,
                 "profile": profile.get("profile") if stage == "scenario_profile" else None})
-    derived = {}
-    for key, binding in manifest["derived_bindings"].items():
-        source = binding["source"]
-        if source["kind"] == "constant": value = source.get("value")
-        elif source["kind"] == "reference":
-            reference = source.get("key")
-            value = resolved.get(reference, derived.get(reference))
-            if value is None: raise ValueError(f"unresolved derived reference {reference}")
-        else: raise ValueError(f"unsupported derived source kind: {source.get('kind')}")
-        derived[key] = value
-        for target in binding["targets"]: provenance.setdefault(target, []).append(
-            {"stage": "derived_wiring", "binding": key, "value": value})
-    platform_values = dict(platform.get("fixed_values", {}))
-    for key, value in platform_values.items(): provenance.setdefault(key, []).append(
-        {"stage": "platform", "profile": platform.get("platform"), "value": value})
-    missing = sorted(set(manifest["public_inputs"]) - resolved.keys())
+    missing = sorted(set(schema["configuration_keys"]) - resolved.keys())
     if missing: raise ValueError(f"incomplete baseline context: {missing}")
     return {"schema_context": baseline_values, "profile_context": profile_values,
-        "user_context": user_values, "derived_context": derived, "platform_context": platform_values,
-        "resolved_context": resolved, "provenance": provenance}
+        "user_context": user_values, "resolved_context": resolved, "provenance": provenance}
 
 
 def _yaml_scalar(value: Any) -> str:
@@ -109,13 +92,18 @@ def _yaml_scalar(value: Any) -> str:
 
 def _ros_launch_value(value: Any) -> str:
     if isinstance(value, bool): value = "true" if value else "false"
+    elif (isinstance(value, list) and value and isinstance(value[0], dict)
+          and value[0].get("kind") == "package_share"):
+        package = value[0].get("package")
+        parts = [f"FindPackageShare({package!r})", *(repr(part) for part in value[1:])]
+        return f"PathJoinSubstitution([{', '.join(parts)}])"
     elif isinstance(value, (list, dict)): value = json.dumps(value, separators=(",", ":"))
     else: value = str(value)
     return repr(value)
 
 
 def _template_variables(source: str) -> list[str]:
-    return sorted(set(re.findall(r'(?:values|derived|platform)\["([^"]+)"\]', source)))
+    return sorted(set(re.findall(r'values\["([^"]+)"\]', source)))
 
 
 def _digest(path: Path) -> str:
@@ -131,9 +119,7 @@ def render_templates(template_directory: str | Path, manifest: dict[str, Any], c
     records = []
     for definition in manifest["templates"]:
         template_name = definition["path"]; source = (template_directory / template_name).read_text(encoding="utf-8")
-        rendered = environment.get_template(template_name).render(
-            values=context["resolved_context"], derived=context["derived_context"],
-            platform=context["platform_context"])
+        rendered = environment.get_template(template_name).render(values=context["resolved_context"])
         if definition["deployment_strategy"] == "package_overlay":
             relative = Path("overlay") / definition["install_target"]
         else: relative = Path(definition["output"])
@@ -164,9 +150,11 @@ def validate_rendered_files(bundle_directory: str | Path, render_records: list[d
 
 def _prepare_analysis_workspace(workspace: Path, bundle: Path, render_records: list[dict[str, Any]]) -> tuple[Path, str]:
     analysis = bundle / "analysis_workspace"; source = analysis / "src"
+    if analysis.exists():
+        shutil.rmtree(analysis)
     for package in ("antrobot_ros", "antrobot_description"):
         shutil.copytree(workspace / "src" / package, source / package, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
     for record in render_records:
         generated = bundle / record["output"]
         if record["deployment_strategy"] == "package_overlay":
@@ -182,13 +170,19 @@ def _prepare_analysis_workspace(workspace: Path, bundle: Path, render_records: l
 def reanalyze_generated_bundle(workspace: str | Path, bundle_directory: str | Path,
                                render_records: list[dict[str, Any]]) -> dict[str, Any]:
     analysis, root = _prepare_analysis_workspace(Path(workspace).resolve(), Path(bundle_directory), render_records)
-    roots = ["src/antrobot_ros", "src/antrobot_description"]
-    step1 = extract_ros_node_ir(analysis, source_roots=roots)
-    launch = extract_launch_files(analysis, source_roots=roots)
-    configuration = extract_parameter_yaml(analysis, source_roots=roots)
-    packages = extract_package_metadata(analysis, source_roots=["src"])
-    return build_system_model(workspace=analysis, step1=step1, launch=launch, configuration=configuration,
-                              package_metadata=packages, root_launch_files=[root])
+    try:
+        roots = ["src/antrobot_ros", "src/antrobot_description"]
+        step1 = extract_ros_node_ir(analysis, source_roots=roots)
+        launch = extract_launch_files(analysis, source_roots=roots)
+        configuration = extract_parameter_yaml(analysis, source_roots=roots)
+        packages = extract_package_metadata(analysis, source_roots=["src"])
+        return build_system_model(
+            workspace=analysis, step1=step1, launch=launch,
+            configuration=configuration, package_metadata=packages,
+            root_launch_files=[root],
+        )
+    finally:
+        shutil.rmtree(analysis, ignore_errors=True)
 
 
 def _semantic_projection(model: dict[str, Any]) -> dict[str, Any]:
@@ -215,7 +209,7 @@ def compare_system_models(reference: dict[str, Any], generated: dict[str, Any]) 
     if left["edges"] != right["edges"]: differences.append({"area": "architecture", "severity": "error",
         "reference": left["edges"], "generated": right["edges"]})
     structural = {"reference_roots": reference.get("roots"), "generated_roots": generated.get("roots"),
-                  "classification": "expected", "reason": "generated wrapper and copied analysis workspace"}
+                  "status": "expected", "reason": "generated wrapper and copied analysis workspace"}
     return {"semantically_equivalent": not differences, "unexpected_differences": differences,
             "structural_diff": structural, "reference_projection": left, "generated_projection": right}
 
@@ -227,26 +221,34 @@ def render_configuration_bundle(*, workspace: str | Path, template_directory: st
                                 debug_contexts: bool = False,
                                 require_equivalence: bool = True) -> dict[str, Any]:
     template_directory, output = Path(template_directory), Path(output_directory)
-    manifest = _read(template_directory / "manifest.json")
-    platform = _read(template_directory / manifest["platform_profile"])
+    manifest = TemplateManifest.model_validate(
+        _read(template_directory / "manifest.json")
+    ).model_dump(mode="json")
     baseline = _read(template_directory / manifest["baseline_profile"])
-    context = resolve_render_context(schema, manifest, platform, baseline, profile, user_values)
+    context = resolve_render_context(schema, baseline, profile, user_values)
     output.mkdir(parents=True, exist_ok=True)
     records = render_templates(template_directory, manifest, context, output)
     static_validation = validate_rendered_files(output, records)
     if not static_validation["valid"]: raise ValueError(f"rendered artifact validation failed: {static_validation['errors']}")
-    generated_model = reanalyze_generated_bundle(workspace, output, records)
-    equivalence = compare_system_models(reference_model, generated_model)
-    resolved = {"values": context["resolved_context"], "derived": context["derived_context"],
-                "platform": context["platform_context"], "provenance": context["provenance"]}
+    generated_model = reanalyze_generated_bundle(workspace, output, records) if require_equivalence else None
+    equivalence = (compare_system_models(reference_model, generated_model)
+                   if generated_model is not None else {
+                       "semantically_equivalent": None,
+                       "unexpected_differences": [],
+                       "skipped": True,
+                       "reason": "offline equivalence analysis was not requested",
+                   })
+    resolved = {"values": context["resolved_context"], "provenance": context["provenance"]}
     (output / "resolved_context.json").write_text(json.dumps(resolved, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (output / "render_manifest.json").write_text(json.dumps({"files": records}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     validation = {"static": static_validation, "equivalence": equivalence,
                   "equivalence_required": require_equivalence,
                   "valid": static_validation["valid"] and
-                  (equivalence["semantically_equivalent"] or not require_equivalence)}
+                  (bool(equivalence["semantically_equivalent"]) or not require_equivalence)}
     (output / "validation.json").write_text(json.dumps(validation, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (output / "generated_system_model.json").write_text(json.dumps(generated_model, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if generated_model is not None:
+        (output / "generated_system_model.json").write_text(
+            json.dumps(generated_model, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if debug_contexts:
         (output / "context_stages.json").write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {"output_directory": output, "render_records": records, "context": resolved,

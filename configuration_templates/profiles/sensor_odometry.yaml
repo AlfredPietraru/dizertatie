@@ -1,5 +1,4 @@
 {
-  "schema_version": "1.0",
   "profile": "sensor_odometry",
   "values": {
     "launch.launch_kinematic_icp": false,

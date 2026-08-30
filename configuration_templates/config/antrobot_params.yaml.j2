@@ -1,17 +1,17 @@
 rdrive:
   ros__parameters:
-    wheel_radius: {{ platform["nodes.rdrive_node.wheel_radius"] | yaml_scalar }}
-    wheel_separation: {{ platform["nodes.rdrive_node.wheel_separation"] | yaml_scalar }}
-    encoder_cpr_left: {{ platform["nodes.rdrive_node.encoder_cpr_left"] | yaml_scalar }}
-    encoder_cpr_right: {{ platform["nodes.rdrive_node.encoder_cpr_right"] | yaml_scalar }}
-    no_load_rpm_left: {{ platform["nodes.rdrive_node.no_load_rpm_left"] | yaml_scalar }}
-    no_load_rpm_right: {{ platform["nodes.rdrive_node.no_load_rpm_right"] | yaml_scalar }}
+    wheel_radius: {{ values["nodes.rdrive_node.wheel_radius"] | yaml_scalar }}
+    wheel_separation: {{ values["nodes.rdrive_node.wheel_separation"] | yaml_scalar }}
+    encoder_cpr_left: {{ values["nodes.rdrive_node.encoder_cpr_left"] | yaml_scalar }}
+    encoder_cpr_right: {{ values["nodes.rdrive_node.encoder_cpr_right"] | yaml_scalar }}
+    no_load_rpm_left: {{ values["nodes.rdrive_node.no_load_rpm_left"] | yaml_scalar }}
+    no_load_rpm_right: {{ values["nodes.rdrive_node.no_load_rpm_right"] | yaml_scalar }}
     odom_frequency: {{ values["nodes.rdrive_node.odom_frequency"] | yaml_scalar }}
-    odom_topic: {{ derived["wiring.odom_wheel_topic"] | yaml_scalar }}
+    odom_topic: {{ values["nodes.rdrive_node.odom_topic"] | yaml_scalar }}
     publish_tf: {{ values["nodes.rdrive_node.publish_tf"] | yaml_scalar }}
     invert_odom_tf: {{ values["nodes.rdrive_node.invert_odom_tf"] | yaml_scalar }}
-    odom_frame_id: {{ derived["wiring.odom_wheel_frame"] | yaml_scalar }}
-    base_frame_id: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    odom_frame_id: {{ values["nodes.rdrive_node.odom_frame_id"] | yaml_scalar }}
+    base_frame_id: {{ values["nodes.rdrive_node.base_frame_id"] | yaml_scalar }}
     enable_jump_correction: {{ values["nodes.rdrive_node.enable_jump_correction"] | yaml_scalar }}
     max_linear_jump: {{ values["nodes.rdrive_node.max_linear_jump"] | yaml_scalar }}
     max_angular_jump: {{ values["nodes.rdrive_node.max_angular_jump"] | yaml_scalar }}
@@ -26,12 +26,12 @@ rplidar:
     scan_mode: "Sensitivity"
 joint_state_estimator:
   ros__parameters:
-    odom: {{ derived["wiring.odom_wheel_topic"] | yaml_scalar }}
-    joint_states_topic: {{ derived["wiring.joint_states_topic"] | yaml_scalar }}
+    odom: {{ values["nodes.joint_state_estimator.odom"] | yaml_scalar }}
+    joint_state_topic: {{ values["nodes.joint_state_estimator.joint_state_topic"] | yaml_scalar }}
     use_icp_estimation: {{ values["nodes.joint_state_estimator.use_icp_estimation"] | yaml_scalar }}
-    wheel_velocity_correction_factor: {{ values["nodes.joint_state_estimator.wheel_velocity_correction_factor"] | yaml_scalar }}
-    wheel_radius: {{ platform["nodes.joint_state_estimator.wheel_radius"] | yaml_scalar }}
-    wheel_separation: {{ platform["nodes.joint_state_estimator.wheel_separation"] | yaml_scalar }}
+    velocity_correction_factor: {{ values["nodes.joint_state_estimator.velocity_correction_factor"] | yaml_scalar }}
+    wheel_radius: {{ values["nodes.joint_state_estimator.wheel_radius"] | yaml_scalar }}
+    wheel_separation: {{ values["nodes.joint_state_estimator.wheel_separation"] | yaml_scalar }}
     publish_frequency: {{ values["nodes.joint_state_estimator.publish_frequency"] | yaml_scalar }}
 robot_state:
   ros__parameters:
@@ -47,14 +47,14 @@ tf_static:
     publish_transforms: false
 laserscan_to_pointcloud:
   ros__parameters:
-    scan_topic: {{ derived["wiring.scan_topic"] | yaml_scalar }}
-    pointcloud_topic: {{ derived["wiring.scan_pointcloud_topic"] | yaml_scalar }}
+    scan_topic: {{ values["nodes.laserscan_to_pointcloud.scan_topic"] | yaml_scalar }}
+    pointcloud_topic: {{ values["nodes.laserscan_to_pointcloud.pointcloud_topic"] | yaml_scalar }}
     include_point_timestamp: {{ values["nodes.laserscan_to_pointcloud.include_point_timestamp"] | yaml_scalar }}
 kiss_icp:
   ros__parameters:
-    odom_topic: {{ derived["wiring.odom_topic"] | yaml_scalar }}
-    base_frame: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
-    lidar_odom_frame: {{ derived["wiring.odom_frame"] | yaml_scalar }}
+    odom_topic: {{ values["nodes.kiss_icp.odom_topic"] | yaml_scalar }}
+    base_frame: {{ values["nodes.kiss_icp.base_frame"] | yaml_scalar }}
+    lidar_odom_frame: {{ values["nodes.kiss_icp.lidar_odom_frame"] | yaml_scalar }}
     publish_odom_tf: {{ values["nodes.kiss_icp.publish_odom_tf"] | yaml_scalar }}
     invert_odom_tf: {{ values["nodes.kiss_icp.invert_odom_tf"] | yaml_scalar }}
     max_range: {{ values["nodes.kiss_icp.max_range"] | yaml_scalar }}
@@ -73,12 +73,12 @@ kiss_icp:
     use_sim_time: {{ values["nodes.kiss_icp.use_sim_time"] | yaml_scalar }}
 kinematic_icp:
   ros__parameters:
-    lidar_topic: {{ derived["wiring.scan_topic"] | yaml_scalar }}
+    lidar_topic: {{ values["nodes.kinematic_icp.lidar_topic"] | yaml_scalar }}
     use_2d_lidar: {{ values["nodes.kinematic_icp.use_2d_lidar"] | yaml_scalar }}
-    lidar_odometry_topic: {{ derived["wiring.odom_topic"] | yaml_scalar }}
-    lidar_odom_frame: {{ derived["wiring.odom_frame"] | yaml_scalar }}
-    wheel_odom_frame: {{ derived["wiring.odom_wheel_frame"] | yaml_scalar }}
-    base_frame: {{ derived["wiring.base_link_frame"] | yaml_scalar }}
+    lidar_odometry_topic: {{ values["nodes.kinematic_icp.lidar_odometry_topic"] | yaml_scalar }}
+    lidar_odom_frame: {{ values["nodes.kinematic_icp.lidar_odom_frame"] | yaml_scalar }}
+    wheel_odom_frame: {{ values["nodes.kinematic_icp.wheel_odom_frame"] | yaml_scalar }}
+    base_frame: {{ values["nodes.kinematic_icp.base_frame"] | yaml_scalar }}
     publish_odom_tf: {{ values["nodes.kinematic_icp.publish_odom_tf"] | yaml_scalar }}
     invert_odom_tf: {{ values["nodes.kinematic_icp.invert_odom_tf"] | yaml_scalar }}
     visualize: {{ values["nodes.kinematic_icp.visualize"] | yaml_scalar }}
@@ -103,3 +103,9 @@ cartographer:
     config_file: "antrobot_cartographer_2d.lua"
     resolution: 0.05
     publish_period_sec: 1.0
+cartographer_node:
+  ros__parameters:
+    use_sim_time: {{ values["nodes.cartographer_node.use_sim_time"] | yaml_scalar }}
+occupancy_grid_node:
+  ros__parameters:
+    use_sim_time: {{ values["nodes.occupancy_grid_node.use_sim_time"] | yaml_scalar }}

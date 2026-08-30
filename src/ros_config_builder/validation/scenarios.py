@@ -24,7 +24,7 @@ def _edges(model: dict[str, Any]) -> set[tuple[Any, ...]]:
 def validate_scenario_delta(*, baseline_model: dict[str, Any], scenario_model: dict[str, Any],
                             baseline_context: dict[str, Any], scenario_context: dict[str, Any],
                             expectation: dict[str, Any]) -> dict[str, Any]:
-    """Require exactly the declared public/deployment changes and protected stability."""
+    """Require exactly the declared configuration and deployment changes."""
     errors, observations = [], []
     baseline_values, scenario_values = baseline_context["values"], scenario_context["values"]
     actual_changes = {key: {"from": baseline_values.get(key), "to": scenario_values.get(key)}
@@ -56,10 +56,6 @@ def validate_scenario_delta(*, baseline_model: dict[str, Any], scenario_model: d
     if actual_parameter_changes != expected_parameters:
         errors.append({"area": "parameters", "expected": expected_parameters,
                        "actual": actual_parameter_changes})
-    if baseline_context["derived"] != scenario_context["derived"]:
-        errors.append({"area": "protection", "message": "derived wiring changed"})
-    if baseline_context["platform"] != scenario_context["platform"]:
-        errors.append({"area": "protection", "message": "platform-fixed values changed"})
     required_edges = {tuple(item) for item in expectation.get("required_edges", [])}
     missing_edges = required_edges - _edges(scenario_model)
     if missing_edges: errors.append({"area": "architecture", "message": "required edges missing",
@@ -69,9 +65,7 @@ def validate_scenario_delta(*, baseline_model: dict[str, Any], scenario_model: d
     if expectation.get("known_limitations"):
         observations.append({"known_limitations": expectation["known_limitations"]})
     return {"valid": not errors, "scenario": expectation.get("scenario"), "errors": errors,
-            "actual_configuration_changes": actual_changes, "observations": observations,
-            "protected": {"derived_wiring_unchanged": baseline_context["derived"] == scenario_context["derived"],
-                          "platform_values_unchanged": baseline_context["platform"] == scenario_context["platform"]}}
+            "actual_configuration_changes": actual_changes, "observations": observations}
 
 
 def write_scenario_validation(result: dict[str, Any], output_directory: str | Path) -> Path:

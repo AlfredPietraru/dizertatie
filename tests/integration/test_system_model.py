@@ -19,6 +19,7 @@ class AntRobotSystemModelTests(unittest.TestCase):
             package_metadata=extract_package_metadata(".", source_roots=["src"]),
             root_launch_files=["src/antrobot_ros/launch/antrobot.launch.py"],
         )
+        self.assertEqual(model["schema_version"], "1.0")
         self.assertEqual(model["summary"]["roots"], 1)
         self.assertGreaterEqual(model["summary"]["local_instances"], 4)
         self.assertGreaterEqual(model["summary"]["external_instances"], 1)
@@ -35,6 +36,15 @@ class AntRobotSystemModelTests(unittest.TestCase):
         self.assertGreaterEqual(validation["coverage"]["confirmed_edges"], 1)
         edge = next(item for item in model["edges"] if item["name"] == "/odom_wheel")
         self.assertEqual(edge["confidence"], "confirmed")
+
+    def test_rejects_missing_or_wrong_schema_version(self) -> None:
+        missing = validate_system_model({})
+        wrong = validate_system_model({"schema_version": "0.9"})
+
+        self.assertFalse(missing["valid"])
+        self.assertFalse(wrong["valid"])
+        self.assertIn("schema version None", missing["errors"][0])
+        self.assertIn("schema version '0.9'", wrong["errors"][0])
 
 
 if __name__ == "__main__":

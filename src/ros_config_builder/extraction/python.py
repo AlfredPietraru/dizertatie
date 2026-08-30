@@ -16,7 +16,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..schemas.ros import SCHEMA_VERSION, validate_step1_payload
+from ..schemas.ros import validate_step1_payload
 
 
 IGNORED_DIRECTORIES = {
@@ -322,8 +322,7 @@ def build_module_ir(source: str, *, file_path: str, module_name: str,
         if creates:
             ros_factories.append({"function": function_node.name, "ros_factory": True, "creates": creates,
                                   "source": _location(file_path, function_node)})
-    module_payload = {"schema_version": SCHEMA_VERSION,
-             "module": {"file_path": file_path, "module_name": module_name, "package": package},
+    module_payload = {"module": {"file_path": file_path, "module_name": module_name, "package": package},
              "imports": imports, "global_assignments": globals_, "classes": classes,
              "functions": functions, "entrypoints": entrypoints, "ros_factories": ros_factories,
              "unresolved_symbols": [{"symbol": key, "locations": value}
@@ -378,7 +377,6 @@ def _node_ir(module_ir: dict[str, Any], tree: ast.Module, class_node: ast.ClassD
     assignments: dict[str, ast.AST] = {}
     parameter_bindings: dict[str, str] = {}
     result: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION,
         "id": f"node:{module_ir['module']['module_name']}.{class_node.name}",
         "class_name": class_node.name, "qualified_class": f"{module_ir['module']['module_name']}.{class_node.name}",
         "ros_node_status": "confirmed",
@@ -663,7 +661,7 @@ def extract_ros_node_ir(workspace: str | Path, *, source_roots: Iterable[str | P
         for key in ("parameters", "qos_profiles", "publishers", "subscriptions", "services",
                     "clients", "actions", "timers", "tf_entities", "unresolved_expressions"):
             counts[key] += len(node[key])
-    payload = {"schema_version": SCHEMA_VERSION, "stage": "python_ros_static_extraction",
+    payload = {"stage": "python_ros_static_extraction",
             "boundary": {"python_only": True, "launch": False, "yaml": False,
                          "inter_node_edges": False, "llm": False},
             "summary": {"modules": len(modules), "nodes": len(nodes),
