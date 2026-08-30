@@ -1,0 +1,32 @@
+{
+  "operation": "mission",
+  "workspace": ".",
+
+  "mission": "Build a map using KISS-ICP",
+  "output_directory": "artifacts/mission_runs/few_shot_v1",
+
+  "system_model": "artifacts/ros_system_model/ros_system_model.json",
+  "configuration_schema": "artifacts/template_configuration/template_configuration_schema.json",
+  "parameter_evidence": "artifacts/semantic_parameters/evidence.json",
+  "semantic_enrichment": null,
+  "template_directory": "configuration_templates",
+  "capability_registry": "configuration_templates/capability_registry.yaml",
+
+  "capability_prompt": "prompts/few_shot/mission_interpretation.txt",
+  "parameter_selection_prompt": "prompts/few_shot/parameter_selection.txt",
+  "parameter_value_prompt": "prompts/few_shot/parameter_value_reasoning.txt",
+  "ollama_model": "qwen2.5-coder:7b",
+  "ollama_host": null,
+  "environment_file": ".env",
+
+  "context_variant": "graph",
+  "retrieval_top_k": 12,
+  "graph_hops": 1,
+
+  "root_launch_files": [
+    "src/antrobot_ros/launch/antrobot.launch.py"
+  ],
+  "analysis_output": "artifacts/ros_system_model/analysis.json",
+
+  "model_to_validate": "artifacts/ros_system_model/ros_system_model.json"
+}

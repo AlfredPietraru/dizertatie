@@ -327,32 +327,9 @@ class MissionApplication:
         return result
 
 
-def run(configuration_path: str | Path = DEFAULT_CONFIGURATION_PATH) -> int:
-    """Execute the operation selected in the validated configuration."""
-    configuration: ApplicationConfiguration = load_application_configuration(configuration_path)
+def build_mission_application(configuration: ApplicationConfiguration) -> MissionApplication:
+    """Build the exact mission pipeline described by an application configuration."""
     workspace = configuration.workspace
-    if configuration.operation == "analyze":
-        pipeline = SemesterOnePipeline(workspace)
-        model = pipeline.integrate([
-            path.as_posix() for path in configuration.root_launch_files
-        ])
-        report = pipeline.validate(model)
-        payload = {"model": model, "validation": report}
-        output = configuration.resolve(configuration.analysis_output)
-        if output is not None:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        else:
-            print(json.dumps(payload, indent=2))
-        return 0 if not report.get("errors") else 1
-    if configuration.operation == "validate":
-        model_path = configuration.resolve(configuration.model_to_validate)
-        assert model_path is not None
-        model = json.loads(model_path.read_text(encoding="utf-8"))
-        report = SemesterOnePipeline(workspace).validate(model)
-        print(json.dumps(report, indent=2))
-        return 0 if not report.get("errors") else 1
-
     environment_path = configuration.resolve(configuration.environment_file)
     assert environment_path is not None
     load_environment(environment_path)
@@ -391,7 +368,7 @@ def run(configuration_path: str | Path = DEFAULT_CONFIGURATION_PATH) -> int:
         top_k=configuration.retrieval_top_k,
         graph_hops=configuration.graph_hops,
     )
-    application = MissionApplication(
+    return MissionApplication(
         workspace=workspace,
         interpreter=MissionInterpreter(
             backend, system_prompt=prompt, registry=registry,
@@ -404,6 +381,35 @@ def run(configuration_path: str | Path = DEFAULT_CONFIGURATION_PATH) -> int:
         parameter_evidence_path=configuration.parameter_evidence,
         semantic_enrichment_path=configuration.semantic_enrichment,
     )
+
+
+def run(configuration_path: str | Path = DEFAULT_CONFIGURATION_PATH) -> int:
+    """Execute the operation selected in the validated configuration."""
+    configuration: ApplicationConfiguration = load_application_configuration(configuration_path)
+    workspace = configuration.workspace
+    if configuration.operation == "analyze":
+        pipeline = SemesterOnePipeline(workspace)
+        model = pipeline.integrate([
+            path.as_posix() for path in configuration.root_launch_files
+        ])
+        report = pipeline.validate(model)
+        payload = {"model": model, "validation": report}
+        output = configuration.resolve(configuration.analysis_output)
+        if output is not None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        else:
+            print(json.dumps(payload, indent=2))
+        return 0 if not report.get("errors") else 1
+    if configuration.operation == "validate":
+        model_path = configuration.resolve(configuration.model_to_validate)
+        assert model_path is not None
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        report = SemesterOnePipeline(workspace).validate(model)
+        print(json.dumps(report, indent=2))
+        return 0 if not report.get("errors") else 1
+
+    application = build_mission_application(configuration)
     try:
         result = application.process(
             configuration.mission,

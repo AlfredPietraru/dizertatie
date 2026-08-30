@@ -183,6 +183,40 @@ PYTHONPATH=src python helper_scripts/compare_mission_evaluations.py \
 
 Comparison requires the same case IDs and dataset. It reports metric deltas and per-case pass/fail transitions.
 
+## LLM-output evaluation using orchestration prompts
+
+To evaluate the LLM stages used by `orchestrate.py`—capability interpretation, parameter selection, and parameter
+value reasoning—run:
+
+```bash
+PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
+  --configuration src/ros_config_builder/parameters.yaml
+```
+
+By default this compares `data/evaluation_missions.jsonl` with the generated
+`data/antrobot_mission_dataset_v1.jsonl`. Supply `--dataset PATH` repeatedly to select other JSONL datasets and
+use `--limit N` for a smoke run. The evaluator constructs the inference components through the same factory as
+`orchestrate.py`; therefore model, host, all three prompts and response schemas, registry, evidence, context
+variant, retrieval limits, and graph expansion are shared rather than reimplemented. Deterministic capability
+realization and ROS orchestration are used only to construct the parameter prompts. The evaluator deliberately
+stops before configuration-plan construction, YAML rendering, launch-file assembly, or render validation.
+
+The report contains the following recommended metrics:
+
+- outcome accuracy and unsafe execution rate for terminal outcomes;
+- exact capability match and capability leaf-level micro precision, recall, and F1;
+- exact parameter-selection match and selection micro precision, recall, and F1;
+- exact parameter-value match and value micro precision, recall, and F1;
+- joint exact match across all applicable LLM outputs as the primary end-to-end correctness measure;
+- inference-pipeline completion rate as a reliability measure;
+- mean, median, and p95 end-to-end latency;
+- paraphrase prediction consistency and all-paraphrases-correct group robustness for generated datasets.
+
+Each dataset receives `predictions.jsonl` and `evaluation.json`. Every prediction retains the exact system/user
+prompts, raw model responses, parsed structured outputs, and validation errors for all calls that occurred. The
+experiment root receives `comparison.json` and `comparison.md`, including hashes for the application configuration
+and datasets. No configuration YAML or launch file is generated or evaluated.
+
 ## Experimental discipline
 
 Use a development/held-out split before prompt tuning. Once errors from a dataset have influenced prompts, retrieval weights, examples, or context construction, that dataset is development data.
