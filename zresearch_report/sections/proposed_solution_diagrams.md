@@ -61,7 +61,26 @@ flowchart LR
     HASH --> EVIDENCE
 ```
 
-## 3. Parameter retrieval and separated LLM reasoning
+## 3. Three-call language-model pipeline
+
+Suggested placement: immediately after the opening explanation in the `Natural-Language Configuration Reasoning` section.
+
+```mermaid
+flowchart TD
+    M[User mission] --> C1[LLM call 1<br/>Capability interpretation]
+    C1 --> V1{Valid capability result?}
+    V1 -- no --> STOP[Unsupported, clarification,<br/>or early termination]
+    V1 -- yes --> R1[Deterministic capability realization<br/>and ROS connection checks]
+    R1 --> RET[Deterministic parameter retrieval<br/>and bounded candidate context]
+    RET --> C2[LLM call 2<br/>Parameter selection]
+    C2 --> V2{Valid selection?}
+    V2 -- no --> STOP
+    V2 -- yes --> SVAL[Deterministic identifier<br/>and evidence validation]
+    SVAL --> C3[LLM call 3<br/>Parameter value reasoning]
+    C3 --> V3[Deterministic old-value, type,<br/>constraint, and plan validation]
+```
+
+## 4. Parameter retrieval and separated LLM reasoning
 
 ```mermaid
 flowchart TD
@@ -87,7 +106,7 @@ flowchart TD
     VVALID -- yes --> CHANGES[Validated parameter changes]
 ```
 
-## 4. Sparse plan validation and configuration application
+## 5. Sparse plan validation and configuration application
 
 ```mermaid
 flowchart TD
@@ -104,7 +123,7 @@ flowchart TD
     STATIC --> BUNDLE[Generated launch/YAML bundle with hashes and provenance]
 ```
 
-## 5. Representative end-to-end request
+## 6. Representative end-to-end request
 
 ```mermaid
 flowchart TD
