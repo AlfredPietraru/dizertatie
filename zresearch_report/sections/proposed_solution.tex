@@ -1,0 +1,165 @@
+\chapter{Proposed Solution}
+\section{High-Level System Overview}
+The proposed system is designed as a modular, multi-stage pipeline that transforms high-level 
+human intent into executable robotic configurations in a structured and reproducible manner. 
+As illustrated in the figure bellow, the process begins with a user-provided natural language 
+mission description, which is interpreted by a language model operating under a fixed instruction
+context. This interpretation stage produces a structured JSON representation that captures the 
+essential semantic aspects of the mission, including task type, required capabilities, sensor 
+modalities, and operational constraints. The structured mission representation serves as a stable 
+interface between the language-based reasoning layer and the deterministic configuration synthesis
+pipeline. Subsequent stages validate and normalize this representation before using it to populate 
+parameterized configuration templates, ultimately generating standard ROS configuration and launch 
+artifacts that can be executed without further language model involvement.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{pics/dizertatie.png}
+    \caption{Proposed LLM-Driven ROS Orchestration Architecture}
+    \label{fig:system_architecture}
+\end{figure}
+
+
+\section{Mission Interpretation Component}
+The mission interpretation component represents the first stage of the proposed orchestration 
+framework and serves as the primary interface between human intent and the automated configuration
+pipeline. Its role is to convert a user-provided natural language mission description into a 
+structured, machine-interpretable representation that captures the essential characteristics of 
+the intended robotic task. This component is intentionally designed to operate independently of 
+ROS-specific implementation details, focusing instead on extracting abstract mission semantics that 
+can be consumed deterministically by downstream processes. At its core, the mission interpretation process is formulated as a classification  
+task over multiple parameters. The user provides an unstructured textual description of the desired system behavior, such 
+as the type of task to be performed, the operational mode, or the sensors involved. This input is 
+processed by a large language model operating under a fixed system prompt that defines the model's 
+role, expected behavior, and output format.
+
+The output of this component is a structured JSON object that conforms to a predefined schema. 
+This schema encodes high-level mission attributes, including mission type, required capabilities, 
+sensor modalities, and optional environmental assumptions or operational constraints. By enforcing 
+strict schema adherence and restricting the output space through enumerated values, the system 
+ensures that all generated interpretations are syntactically valid, semantically constrained, and
+suitable for automatic validation. Free-form text or explanatory output is explicitly disallowed,
+as the resulting representation is intended to function as data rather than human-readable documentation.
+
+A key design principle of the mission interpretation component is the isolation of nondeterminism.
+While the language model may internally employ complex reasoning to resolve ambiguities or infer 
+implicit requirements, this nondeterministic behavior is confined exclusively to the interpretation
+stage. Once a valid JSON representation is produced and validated, all subsequent stages of the 
+pipeline operate deterministically, relying on rule-based logic and templated configuration 
+synthesis. This separation improves reproducibility, debuggability, and system robustness, as 
+errors can be traced either to incorrect interpretation or to downstream processing without ambiguity.
+
+The mission interpretation component is also designed to support progressive model adaptation. 
+The system architecture remains unchanged regardless of whether the language model is used in a 
+zero-shot, few-shot, prompt-optimized, or fine-tuned setting. Improvements in interpretation 
+quality can be achieved by refining prompts, introducing soft prompt tuning, or incorporating 
+additional contextual information, without modifying the interface contract or downstream 
+components. This flexibility enables incremental enhancement of the system while preserving a 
+stable and well-defined mission representation format.
+
+To support the mission interpretation component and enable progressive adaptation of the language 
+model, a structured dataset is constructed consisting of pairs of natural language mission 
+descriptions and their corresponding structured mission representations. Rather than attempting 
+to enumerate all possible robotic missions, the dataset is built around a small set of 
+representative canonical missions that capture common robotic tasks, sensor modalities, and 
+operational modes. For each canonical mission, a gold-standard JSON representation is manually 
+defined according to the mission interpretation schema, ensuring semantic correctness and schema validity.
+
+To improve robustness to linguistic variability, multiple paraphrased mission descriptions are 
+generated for each canonical mission while preserving the same structured output. This synthetic 
+expansion allows the dataset to capture natural variation in user phrasing without introducing 
+ambiguity in the intended system behavior. The resulting dataset supports zero-shot and few-shot 
+evaluation, as well as prompt optimization techniques, while remaining lightweight and incrementally 
+extensible. Larger datasets and more advanced adaptation strategies, such as soft prompt tuning or 
+fine-tuning, are considered as future work and can be incorporated without modifying the system 
+architecture or interpretation interface.
+
+The structured mission representation produced by the interpretation stage is subsequently 
+processed by a validation and normalization component that enforces consistency and system-level 
+constraints. This stage operates in a fully deterministic, rule-based manner and serves to isolate
+nondeterministic language model behavior from downstream configuration synthesis. Validation verifies
+the semantic compatibility of mission attributes, such as the coherence between mission type, 
+required capabilities, and sensor modalities, and rejects unsupported or contradictory combinations. Normalization complements this process by injecting predefined default values, making implicit requirements explicit, and standardizing the representation into a canonical form. As a result, semantically equivalent mission descriptions yield identical normalized outputs, ensuring reproducibility and simplifying subsequent processing.
+The normalized mission context produced by this stage provides a stable and reliable input for 
+configuration synthesis, enabling deterministic generation of ROS configuration artifacts without 
+further reliance on language-based reasoning.
+
+\section{Component Resolution}
+The component resolution stage bridges the gap between abstract mission intent and concrete ROS 
+implementations. After the mission interpretation phase produces a validated JSON structure, the 
+system must select a subset of components from a predefined catalog such that the resulting 
+configuration is functionally complete and internally consistent. This stage is entirely 
+deterministic and does not involve further language model reasoning.
+
+The component catalog is structured as a database of declarative entries, each describing a ROS 
+component together with its semantic and compatibility metadata. Each component entry contains: (i)
+a unique identifier and type (e.g., algorithm, sensor driver, control node), (ii) a list of abstract
+capabilities it provides, (iii) required capabilities and required sensors, (iv) environment 
+compatibility constraints (e.g., indoor/outdoor), and (v) ROS implementation details such as package
+name, executable node, and associated launch template. By separating semantic metadata from implementation
+details, the catalog enables reasoning at the capability level while preserving a direct mapping to 
+concrete ROS artifacts.
+
+Formally, the resolution task can be modeled as a constraint satisfaction problem (CSP). Each 
+component in the catalog is associated with a binary decision variable indicating whether it is 
+selected. The constraints enforce: (1) capability coverage, meaning that every required mission 
+capability must be provided by at least one selected component; (2) sensor compatibility, ensuring 
+that selected components require only sensors available in the mission specification; (3) dependency
+closure, such that if a selected component requires another capability, that capability must also be
+provided within the selected set; and (4) conflict avoidance, preventing mutually incompatible components
+from being selected simultaneously. A configuration is considered valid only if all constraints are satisfied.
+
+One practical solution strategy is depth-first backtracking with forward constraint propagation. The
+algorithm incrementally selects components that satisfy required capabilities, while continuously verifying
+compatibility and dependency constraints. If a partial selection violates any constraint, the algorithm
+backtracks and explores alternative combinations. Given the limited size of the component catalog in
+the AntBot scenario, this approach is computationally tractable and guarantees that, if a valid configuration
+exists, it will be found.
+Conceptually, the same problem can also be expressed as a Boolean satisfiability (SAT) problem. Each
+component corresponds to a Boolean variable, and constraints such as capability coverage, dependencies,
+and mutual exclusions can be encoded as logical clauses. The resolution task then becomes the problem
+of determining whether there exists a truth assignment that satisfies all clauses. Although industrial
+SAT solvers are not required due to the small problem scale, this formulation provides theoretical 
+grounding and demonstrates that component selection is a well-defined combinatorial consistency problem
+rather than a heuristic process.
+
+By formulating component resolution as a constrained selection problem and solving it through deterministic
+search with constraint propagation, the system ensures that generated configurations are structurally
+valid, dependency-consistent, and aligned with mission requirements before any ROS configuration files are produced.
+\section{Configuration Context Builder}
+
+Following component resolution, the system does not immediately generate individual parameter files 
+for each selected node. Instead, an intermediate configuration context is constructed to ensure 
+global consistency across all components. This step is essential because many parameters in ROS-based
+systems are not independent. Frame identifiers (e.g., map, odom, base\_link), topic names 
+(e.g., /scan, /camera/depth/points), and time synchronization flags (e.g., use\_sim\_time) must remain 
+consistent across multiple nodes. Generating parameters independently for each component would risk 
+inconsistencies that could break the overall system.
+To address this, a system-level configuration context is created after component selection. This context
+aggregates mission information and hardware constraints into a structured representation containing shared
+parameters such as frame names, topic mappings, sensor activation flags, and execution mode (e.g., exploration 
+or localization-only). These shared parameters form the common configuration layer of the system.
+
+Each selected component retains a stable default parameter file that reflects algorithm-specific tuning and
+validated baseline settings. Rather than regenerating full configuration files from scratch, the 
+system applies a deterministic override process. Shared parameters from the global configuration 
+context are injected into the relevant fields of each component's default YAML file, and only a limited 
+set of mission-dependent parameters are modified.
+
+By separating shared system configuration from component-specific defaults, this step guarantees 
+ reproducibility, and structural validity. The resulting parameter files are 
+therefore consistent at both the global system level and the individual component level, forming a 
+reliable foundation for subsequent template-based launch file generation.
+
+\section{Launch File Generation}
+The final stage of the proposed framework produces a fully executable ROS system configuration 
+derived deterministically from a natural-language mission description. At this point, all semantic
+reasoning and constraint resolution steps have already been completed. The system now materializes 
+the configuration into concrete deployment artifacts. This output consists of two elements: a generated parameter files for 
+each selected component and a synthesized ROS launch file that instantiates the system graph. 
+Stable, algorithm-specific default YAML configurations are preserved, while mission-dependent values
+and globally shared system parameters such as frame identifiers, topic names, and execution mode are
+injected deterministically. This ensures both internal consistency across nodes and preservation of 
+validated tuning parameters. The launch synthesis stage then assembles the executable graph by instantiating each selected node 
+and linking it to its corresponding generated parameter file. The resulting launch file represents 
+the complete operational system, ready to be executed without further manual modification.
+

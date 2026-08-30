@@ -1,0 +1,171 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc} % pentru suport diacritice
+\usepackage[english]{babel} % setări pentru limba română 
+\renewcommand\familydefault{\sfdefault} % sans serif
+
+\usepackage[margin=2.54cm]{geometry}	% dimensiuni pagină și margini
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% formatting sections and subsections
+\usepackage{float}
+\usepackage{textcase}
+\usepackage[titletoc, title]{appendix}
+\usepackage{titlesec}
+\titleformat{\chapter}{\large\bfseries\MakeUppercase}{\thechapter}{2ex}{}[\vspace*{-1.5cm}]
+\titleformat*{\section}{\large\bfseries}
+\titleformat*{\subsection}{\large\bfseries}
+\titleformat*{\subsubsection}{\large\bfseries}
+
+\usepackage{chngcntr}
+\counterwithout{figure}{chapter} % no chapter number in figure labels
+\counterwithout{table}{chapter} % no chapter number in table labels
+\counterwithout{equation}{chapter} % no chapter number in equation labels
+
+\usepackage{booktabs} % for much better looking tables
+\usepackage{url} % Useful for inserting web links nicely
+\usepackage[bookmarks,unicode,hidelinks]{hyperref}
+
+\usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+\usepackage{enumitem}
+\setlist{noitemsep}
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr}
+\pagestyle{empty}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+
+
+
+\newcommand{\HeaderLineSpace}{-0.25cm}
+\newcommand{\UniTextRO}{UNIVERSITATEA POLITEHNICA DIN BUCUREȘTI \\[\HeaderLineSpace] 
+FACULTATEA DE AUTOMATICĂ ȘI CALCULATOARE \\[\HeaderLineSpace]
+DEPARTAMENTUL DE CALCULATOARE\\}
+\newcommand{\DiplomaRO}{PROIECT DE DIPLOMĂ}
+\newcommand{\AdvisorRO}{Coordonator științific:}
+\newcommand{\BucRO}{BUCUREȘTI}
+
+\newcommand{\UniTextEN}{UNIVERSITY POLITEHNICA OF BUCHAREST \\[\HeaderLineSpace]
+FACULTY OF AUTOMATIC CONTROL AND COMPUTERS \\[\HeaderLineSpace]
+COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
+\newcommand{\DiplomaEN}{MASTER'S THESIS}
+\newcommand{\AdvisorEN}{Thesis advisor:}
+\newcommand{\BucEN}{BUCHAREST}
+
+\newcommand{\frontPage}[6]{
+\begin{titlepage}
+\begin{center}
+{\Large #1}  % header (university, faculty, department)
+\vspace{50pt}
+\begin{tabular}{p{6cm}p{4cm}}
+\includegraphics[scale=0.8]{pics/upb-logo.jpg} &
+	\includegraphics[scale=0.5,trim={14cm 11cm 2cm 5cm},clip=true]{pics/cs-logo.pdf}
+\end{tabular}
+
+\vspace{105pt}
+{\Huge #2}\\                           % diploma project text
+\vspace{40pt}
+{\Large #3}\\ \vspace{0pt}  % project title
+{\Large #4}\\                          % project subtitle
+\vspace{40pt}
+{\LARGE \Name}\\                   % student name
+\end{center}
+\vspace{60pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{6cm}r}
+&{\large\textbf{#5}}\vspace{10pt}\\      % scientific advisor
+&{\large \Advisor}                                    % advisor name
+\end{tabular*}
+\vspace{20pt}
+\begin{center}
+{\large\textbf{#6}}\\                                % bucharest
+\vspace{0pt}
+{\normalsize \Year}
+\end{center}
+\end{titlepage}
+}
+
+\newcommand{\frontPageEN}{\frontPage{\UniTextEN}{\DiplomaEN}{\ProjectTitleEN}{\ProjectSubtitleEN}{\AdvisorEN}{\BucEN}}
+
+\linespread{1.15}
+\setlength\parindent{0pt}
+\setlength\parskip{.28cm}
+
+%% Abstract macro
+\newcommand{\AbstractPage}{
+\begin{titlepage}
+\textbf{\large ABSTRACT}\par
+\AbstractEN \vfill
+\end{titlepage}
+}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%   
+%%
+%%          End of template definitions
+%%   
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%% Puteți elimina aceste linii din lucrare, servesc numai pentru template.
+\newcommand{\worktype}[1]{[\textit{#1}] }
+\newcommand{\dezvoltare}{\worktype{Dezvoltare de produs}}
+\newcommand{\cercetare}{\worktype{Cercetare}}
+\newcommand{\ambele}{\worktype{Ambele}}
+%%%
+
+
+%%
+%%   Campurile de mai jos trebuie modificate de autor. Modificati doar continutul, nu si numele fiecarei definitii
+%%
+\newcommand{\ProjectTitleRO}{Titlul proiectului de diplomă (ex: Șablon proiect de diplomă)}
+\newcommand{\ProjectSubtitleRO}{Subtitlu (ex: versiunea 2018)}
+\newcommand{\ProjectTitleEN}{Automated ROS Infrastructure}
+\newcommand{\ProjectSubtitleEN}{Orchestration via LLM-Driven Templating}
+\newcommand{\Name}{Alfred Andrei Pietraru}
+\newcommand{\Advisor}{Prof. dr. ing. Dan Marius Novischi}
+\newcommand{\Year}{2018}
+
+% Setări document
+\title{Proiect de diplomă}
+\author{\Name}
+\date{\Year}
+
+%%
+%%   Campurile aferente rezumatului
+%%
+\newcommand{\AbstractEN}{Modern robotic platforms such as the AntRobot operate within complex software ecosystems based on the Robot Operating System (ROS2) \cite{quigley2009ros} \cite{macenski2022ros2} where system functionality is distributed across multiple interconnected nodes responsible for perception, localization, mapping, planning, and control. Although ROS promotes modular design, configuring these nodes remains a largely manual and error-prone process. Even minor changes, such as switching sensors, modifying mission modes, or adjusting parameters, often require extensive manual edits across multiple YAML and launch files.
+
+This repetitive configuration effort limits reproducibility, scalability, and experimentation speed in both research and applied robotics. Existing orchestration solutions, including ROScribe and RobotKube, provide partial automation but continue to rely on static configuration schemes that restrict flexibility and reuse.
+
+This work proposes a hybrid ROS orchestration framework that combines dynamic configuration abstraction with language-driven automation. The approach is built on three main components: templated ROS configurations using Jinja2, enabling reusable and parameterized setup files; a Large Language Model (LLM) capable of translating high-level mission descriptions into structured ROS configurations; and a synthetic data bootstrapping strategy that expands a limited set of real mission examples into a larger corpus of mission–configuration pairs.}
+
+\begin{document}
+
+\frontPageEN
+
+\begingroup
+\linespread{1}
+\tableofcontents
+\endgroup
+
+\AbstractPage{}
+
+\input{sections/introduction}
+\input{sections/problem_analysis}
+\input{sections/sota}
+\input{sections/proposed_solution}
+\input{sections/next_activities}
+\input{sections/conclusions}
+
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{sections/bibliography}
+
+\end{document}

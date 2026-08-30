@@ -1,0 +1,72 @@
+\chapter{Problem Analysis}
+\section{ROS-Based Robotic Systems Overview}
+Nowadays robotic systems are increasingly built as distributed software architectures composed of multiple interacting components.
+The Robot Operating System (ROS) has become the standard framework when developing such systems, providing a flexible middleware
+that enables modularity, reuse, and interoperability across heterogeneous hardware and software platforms. In ROS-based systems,
+functionality is decomposed into nodes, each responsible of a well-defined task. These nodes communicate through message passing mechanisms using topics, services, and actions, forming a 
+dynamic computation graph. This publisher-subscriber architecture enables developers to construct complex robotic behaviors. Nodes can be developed independently, deployed on different machines, and connected at runtime,
+allowing robotic systems to scale from single embedded devices to distributed setups.
+
+Additionally, ROS supports a wide ecosystem of third-party packages that implement common algorithms and hardware interfaces,
+significantly reducing development effort. However, the flexibility offered by ROS also introduces complexity. The overall system
+behavior emerges not only from the implementation of individual nodes, but also from how they are connected, configured, and parameterized.
+The ROS computation graph may involve dozens of nodes with intricate dependencies on sensors, coordinate frames, timing assumptions, and
+runtime parameters. As a result, the correctness and performance of the system depend heavily on the configuration choices made during deployment.
+More than that, ROS itself intentionally avoids imposing strong constraints on how systems should be structured. While this design choice promotes
+generality and reusability, it places a significant burden on developers to ensure that node interactions are valid for a given task.
+
+As robotic systems grow in scale and complexity, understanding and managing these interactions becomes challenging,
+particularly when systems must be adapted to new missions, hardware configurations, or operational environments. 
+Beyond software modularity, ROS-based systems must also operate under real-world constraints that further complicate system design. Robotic
+applications are often required to integrate heterogeneous sensors, operate under strict timing requirements, and interact with uncertain
+and dynamic environments. These constraints introduce implicit assumptions into system configurations, such as expected sensor frequencies,
+coordinate frame hierarchies, and synchronization between perception and control pipelines. While ROS provides the communication primitives
+needed to express these interactions, it does not enforce correctness or consistency at the system level. As a result, many design decisions 
+are encoded implicitly in configuration files rather than being explicitly represented or validated. This implicit knowledge becomes increasingly
+difficult to maintain as systems evolve, particularly when configurations are reused across different platforms or mission scenarios.
+
+\section{ROS Configuration and Orchestration Challenges}
+Configuring a ROS-based robotic system involves more than launching executable nodes. Developers must specify a wide range of parameters that govern
+node behavior, communication interfaces, sensor usage, and algorithmic settings. These configurations are typically expressed through a combination 
+of launch files, parameter files, often in YAML format, and environment-specific settings. Even minor changes, such as replacing a sensor or adjusting
+an algorithm parameter, may require coordinated updates across multiple configuration files. Orchestration further complicates this process. In 
+distributed deployments, nodes may be executed across multiple machines or containers, requiring careful management of networking, synchronization, 
+and lifecycle events. Ensuring that nodes are launched in the correct order, recover gracefully from failures, and remain consistent across restarts 
+is non-trivial, particularly when systems are deployed in dynamic or resource-constrained environments. 
+
+Existing orchestration mechanisms within ROS provide only limited support for these challenges. Launch files primarily describe static execution
+graphs and offer minimal capabilities for conditional logic or dynamic adaptation. External orchestration frameworks, such as container-based 
+deployment platforms, can manage process lifecycles and resource allocation but operate largely independently of ROS-specific semantics and in most 
+cases such system are not designed and do not support ROS components. As a result, developers must manually bridge the gap between system-level
+orchestration and ROS-level configuration. Another key challenge lies in the lack of abstraction over mission intent. ROS configurations describe 
+how components are connected and parameterized, but not why a particular configuration is appropriate for a given task. Mission objectives, such as 
+exploration, mapping, or navigation are implicitly encoded in configuration choices rather than explicitly represented. This makes it difficult to
+reason about configurations at a higher level or to systematically adapt systems to new tasks without extensive manual intervention.
+
+\section{Limitations of Manual and Static Approaches}
+The predominant approach to configuring ROS-based systems remains manual and largely static. Developers typically create configuration files by hand,
+relying on experience, documentation, and trial-and-error to achieve correct system behavior. While this approach may be manageable for small systems 
+or fixed use cases, it does not scale well as systems grow in complexity or must support multiple operational modes. Manual configuration is inherently
+error-prone. Parameter mismatches, incompatible topic connections, or incorrect assumptions about sensor availability can lead to subtle runtime 
+failures that are difficult to diagnose. Moreover, configurations are often tightly coupled to specific hardware setups and mission contexts, reducing
+their reusability across different scenarios. Adapting an existing system to a new task frequently involves duplicating and modifying large portions 
+of configuration code, increasing maintenance effort and the risk of inconsistencies. Static configurations also limit adaptability. Once a system is
+launched, its structure and parameters typically remain fixed, even if environmental conditions or task requirements change. While dynamic 
+reconfiguration mechanisms exist, they are rarely used systematically due to their complexity and lack of integration with higher-level reasoning.
+As a result, robotic systems often lack the ability to adjust their behavior automatically in response to changing mission objectives. These limitations
+show a fundamental gap between the low-level configuration mechanisms provided by ROS and the high-level reasoning required for flexible, 
+mission-driven robotic systems. Closing this gap requires methods that can reason about system structure, parameters, and dependencies in a 
+more abstract manner, while still producing concrete, executable configurations.
+
+The lack of standardized abstraction mechanisms further increases orchestration challenges in ROS-based systems. Configuration files often mix 
+concerns related to hardware setup, algorithm selection, and mission-specific behavior, resulting in tightly coupled specifications that are 
+difficult to reason about independently. While parameter servers and launch-time arguments provide some degree of flexibility, they do not offer
+a systematic way to capture higher-level relationships between components. Consequently, orchestration logic is frequently implemented through ad-hoc
+scripts or duplicated configuration fragments, making systems harder to extend and validate. This fragmentation also affects reproducibility, as small,
+undocumented changes in configuration can significantly alter system behavior without being reflected in versioned source code. 
+
+Another flaw is that understanding the impact of a single parameter change often requires detailed knowledge of multiple interacting components, as well as their 
+underlying assumptions. This makes configuration tasks difficult to delegate or automate and limits the ability of non-expert users to deploy or 
+modify robotic systems safely. Moreover, the absence of explicit validation or reasoning mechanisms means that many configuration errors are only 
+discovered at runtime, potentially leading to system downtime or unsafe behavior. These factors underscore the need for approaches that can externalize
+configuration knowledge, reduce manual effort, and support systematic reasoning about system structure and behavior.

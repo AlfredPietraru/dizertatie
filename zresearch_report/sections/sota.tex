@@ -1,0 +1,171 @@
+\chapter{State of the Art and Related Work}
+
+\section{Existing Orchestration Frameworks}
+ROS creates a separation of concerns by using nodes that execute clearly defined tasks and communicate with one 
+another through message passing by implementing a publisher subscriber architecture. In a ROS system, nodes communicate
+extensively with one another, but they can be abstracted as microservices that are responsible for executing specific 
+actions. These microservices usually interact in complex ways that are difficult to handle manually; for this reason, 
+technologies such as Kubernetes \cite{verma2015borg} simplify the orchestration of such systems by managing their lifecycles, scaling applications,
+and handling errors, thereby creating a fault-tolerant and dynamic system. Although Kubernetes is heavily used in the software domain, it lacks orchestration mechanisms tailored to domains such
+as robotics, as it cannot handle ROS-specific concepts such as node graphs, topic compatibility, or sensor algorithm relationships.
+RobotKube can improve deployment portability by defining software components that can be containerized using Docker \cite{merkel2014docker} and orchestrated
+by Kubernetes, and it can assist with managing the lifecycle of ROS nodes. On the other hand, RobotKube cannot provide mission-driven
+orchestration, as the tool has no inherent understanding of the system\'s purpose. Orchestration is achieved through interoperability
+with Kubernetes, while the services handled by RobotKube are built using the ROS framework. RobotKube defines robot specific 
+resources such as ROS components and initializes the RobotKube Operator which is a controller program. The Operator reacts to 
+changes to ROS components and depending on the situation, it can deploy containers, set up networking or restarts components
+which previously failed.
+
+ROScribe \cite{roscribe2025} uses natural language processing to describe system functionalities and generates the initial ROS graph, 
+source code, and launch files. ROScribe builds an entire ROS workspace using four agents that are invoked in a sequential order.
+First, the SpecAgent constructs the ROS graph of the project by interpreting user requirements and creates a corresponding
+development plan. Second, the GenAgent generates the workspace by either retrieving code from public repositories or 
+generating code for the required nodes. Third, the PackAgent analyzes the overall workflow and creates the ROS launch 
+files, along with additional support files such as package.xml, CMakeLists.txt, and README.md. In some cases, the generated
+ROS workspace may contain errors; in this situation, the SupportAgent is responsible for resolving these issues and ensuring
+that the system passes static analysis checks. ROScribe automates code writing, launch file generation, and static code analysis
+as part of an offline workspace synthesis process. Its operation is limited to the design phase, generating an initial ROS 
+workspace based on user descriptions, without adapting configurations at runtime. Also, ROScribe does not handle
+parameter configuration, forcing users to manually create and populate the YAML files associated with each node. This 
+limitation is significant in ROS-based systems, where parameters are often tightly coupled to sensors, algorithms, and 
+mission requirements, making manual configuration repetitive and error-prone. As a result, ROScribe cannot infer or adapt
+configurations based on high-level mission intent, relying instead on static, user-defined parameter settings.
+
+FogROS \cite{fogros22023} is an adaptive framework designed to automate the deployment of fog robotics applications. As robotic algorithms become
+increasingly complex, particularly in areas such as perception and mapping, edge-based systems may struggle to handle the 
+associated computational load under certain conditions. One approach to addressing this limitation is to leverage cloud 
+resources, which can provide scalable computational capabilities for demanding operations, subject to network and latency
+constraints. FogROS builds on top of the ROS framework and allows users to specify which components of a ROS computation
+graph should be executed on cloud resources. FogROS does not provide reasoning or decision-making capabilities, and all 
+deployment configurations must be specified manually by the user. As a result, the system cannot infer mission intent or
+dynamically adapt configurations based on high-level task descriptions. An additional feature of FogROS is its ability to
+automate container creation for cloud deployment, significantly reducing manual setup effort. The framework also supports
+flexible networking and pre-deployed nodes, abstracting many aspects of deployment across local devices and cloud environments,
+while still requiring user-defined configuration choices.
+
+OSRF Nexus \cite{osrfnexus2025} is a framework designed to support dependency management and version control within 
+ROS-based software ecosystems. It provides mechanisms for organizing, distributing, and resolving
+ROS packages and their dependencies across different systems, helping ensure consistency and 
+reproducibility of software environments. Nexus operates at the package and dependency level, allowing
+developers to manage compatible versions of ROS components without directly modifying application
+logic. However, OSRF Nexus focuses exclusively on software dependency resolution 
+and does not address system-level configuration or orchestration. It does not generate ROS graphs,
+launch files, or parameter configurations, nor does it provide mechanisms for adapting configurations
+based on task requirements or mission context. As a result, while Nexus simplifies dependency management
+and improves build-time reproducibility, it does not contribute to mission-driven orchestration or 
+dynamic configuration synthesis, relying instead on static, user-defined system setups.
+
+Existing tools for ROS-based system development address specific aspects of configuration, 
+deployment, or dependency management, but remain limited when considered from a mission-driven
+orchestration perspective. ROScribe automates the generation of ROS workspaces, code, and launch 
+files at design time, yet produces static artifacts and requires manual parameter configuration, 
+lacking support for runtime adaptation or mission-level reasoning. RobotKube improves deployment 
+portability and lifecycle management through Kubernetes integration, but relies on pre-defined 
+configurations and operates solely at the infrastructure level, without semantic understanding 
+of robotic tasks. FogROS focuses on deployment-time placement of ROS nodes across edge and cloud 
+resources, assuming pre-existing applications and static configurations, and does not support 
+graph synthesis or dynamic reconfiguration. OSRF Nexus enhances dependency and version management,
+but does not address configuration generation, orchestration, or task-aware system behavior.
+
+Overall, these approaches improve isolated stages of the ROS workflow while relying on static, 
+user-defined configurations. None provide a reasoning layer capable of translating high-level mission
+intent into adaptive ROS configurations, highlighting a gap that motivates the proposed research approach.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Existing ROS-Oriented Tools}
+\label{tab:ros_tools_comparison}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{|p{3cm}|p{5.5cm}|p{5.5cm}|}
+\hline
+\textbf{Tool} & \textbf{Provided Capabilities} & \textbf{Limitations} \\
+\hline
+
+ROScribe &
+Natural-language-driven generation of ROS workspaces, including source code, ROS graphs, launch files, and basic static analysis using a multi-agent pipeline. &
+Operates only at design time; generates static artifacts; does not handle parameter configuration, runtime adaptation, or mission-level reasoning. \\
+\hline
+
+RobotKube &
+Containerized deployment and lifecycle management of ROS-based components using Kubernetes; improves portability, scalability, and infrastructure-level fault tolerance. &
+Relies on pre-defined configurations; lacks semantic understanding of ROS graphs, sensor--algorithm relationships, and mission-driven orchestration. \\
+\hline
+
+FogROS &
+Deployment-time placement of ROS nodes across edge and cloud resources; automated container creation and infrastructure abstraction for fog robotics applications. &
+Assumes pre-existing ROS applications and static configurations; does not support graph synthesis, parameter abstraction, or runtime mission adaptation. \\
+\hline
+
+OSRF Nexus &
+Dependency and version management for ROS packages; improves reproducibility and consistency of ROS software environments. &
+Operates solely at the package and dependency level; does not address configuration generation, orchestration, or task-aware system behavior. \\
+\hline
+
+\end{tabular}
+\end{table}
+
+\section{Language-Based and AI-Driven Robotics Interfaces}
+Despite the fact that the outputs of large language models (LLMs) remain nondeterministic, they can still
+be integrated into robotic systems in a controlled manner. One example of such integration is ROScribe, 
+which leverages LLM-based workflows to automate the generation of ROS workspaces. Similar to the approach 
+described in the AutoGen \cite{autogen2023} framework, ROScribe employs a multi-agent pipeline in which agents exchange intermediate
+artifacts—such as generated code—and invoke external tools to enrich, validate, or evaluate the produced content.
+Another relevant work for the current context \cite{doasicannot2022} demonstrates how high-level task intent
+can be extracted from a single natural language instruction and decomposed into multiple subtasks. In this approach, the 
+language model proposes candidate actions expressed in natural language, while the robot provides perception and actuation 
+capabilities, effectively serving as the interface to the physical environment. The robot is equipped with a set of predefined 
+elementary skills, typically involving both perception and motion, which can be composed to execute more complex tasks.
+In this framework, the LLM is used to evaluate the suitability of available skills at each step by estimating their contribution 
+to task completion through an affordance-based scoring mechanism. The task is defined using a natural language instruction, 
+while each elementary skill is associated with a short description and execution constraints. A similar abstraction could be 
+applied to ROS-based systems, where nodes are treated as modular components characterized by their code, parameters, dependencies,
+and functional descriptions. By maintaining a database of such components, an LLM could identify suitable building blocks and decompose
+a high-level task into lower-level configuration requirements, enabling the mapping of individual components to each subtask.
+While these approaches focus on task execution and skill selection, they do not address system-level configuration synthesis, 
+which remains the focus of the proposed work.
+
+Large language models have consistently demonstrated the ability to generate and adhere to structured output formats such as JSON \cite{thinkinsidejson2025},
+which is a crucial requirement for integrating LLMs into software systems. When developing applications that rely on automated 
+reasoning, it is often necessary to convert unstructured inputs, such as natural language descriptions, into a fixed set of 
+structured representations that can be programmatically processed. In this context, LLMs do not act as code executors, but rather 
+as planners and selectors that identify the appropriate tools, components, or configuration options required to fulfill a given task.
+This capability is particularly relevant for configuration synthesis tasks,
+where downstream systems depend on well-defined and machine-readable representations, such as parameter sets or orchestration descriptors.
+
+Another foundational contribution to reliable language-based system integration is presented in this paper \cite{ouyang2022instructgpt}. This work demonstrates that large language models can be explicitly trained to prioritize instruction adherence over 
+unconstrained text generation through supervised fine-tuning and reinforcement learning from human feedback. By optimizing models to 
+follow user-provided instructions and constraints, the approach significantly improves controllability and predictability of generated 
+outputs. This capability is essential for applications where natural language serves as a formal interface rather than a conversational medium.
+In the context of configuration synthesis, instruction-tuned models are better suited to interpret high-level mission descriptions and translate
+them into constrained, structured representations without deviating from specified requirements. When combined with schema-constrained 
+generation strategies, instruction-following behavior enables the use of LLMs as reliable planners that map intent to machine-readable 
+configuration contexts.
+
+Before modifying model parameters through fine-tuning or reinforcement learning, large language models can be adapted to specific tasks
+through prompt-based techniques. These approaches aim to improve model behavior by optimizing how tasks, constraints, and output formats 
+are expressed to the model, while keeping the underlying model weights unchanged. Prompt-based adaptation is particularly attractive in 
+early-stage system development due to its low computational cost, reversibility, and rapid iteration cycle.
+One class of approaches relies on text-based prompt optimization, where prompts remain human-readable and are refined through structured 
+experimentation. Libraries such as DSPy \cite{khattab2023dspy} support this paradigm by treating prompts as composable and optimizable programs. DSPy enables the 
+construction of modular prompting pipelines and supports evaluation-driven prompt refinement, allowing developers to improve reliability and 
+schema adherence without retraining the model. This makes text-based prompt optimization suitable for exploring task formulations and enforcing 
+structured outputs in configuration synthesis workflows.
+A complementary approach involves soft or continuous prompt tuning, where prompts are represented as learned embedding vectors rather than 
+explicit text. Frameworks such as PEFT provide implementations of prompt tuning and prefix tuning techniques, in which a small number of trainable
+prompt embeddings are optimized while the base model remains frozen. These methods allow task-specific behavior to be encoded numerically, offering
+greater stability and expressiveness than manual prompting, while remaining significantly more efficient than full model fine-tuning.
+Together, these approaches provide a progressive path for adapting large language models, enabling reliable task execution through prompt design
+before committing to more costly model modification techniques.
+
+Recent advances in large language models have demonstrated strong capabilities in code-aware reasoning and structured program generation. Models 
+such as DeepSeek-Coder are explicitly trained on large-scale code corpora and optimized to generate syntactically correct and semantically coherent
+source code across multiple programming languages. These models have shown improved performance in tasks such as code completion, refactoring, and 
+generation of structured artifacts, making them suitable candidates for applications that require reliable synthesis of machine-readable outputs.
+The relevance of code-oriented language models extends beyond traditional software development to configuration-centric domains, where structured 
+representations such as JSON or YAML must be generated with high precision. In this context, language models can be leveraged to transform natural
+language descriptions into configuration templates, parameter sets, or orchestration descriptors that can be further processed by downstream systems.
+This aligns with recent work demonstrating that code-specialized models exhibit stronger adherence to formal structure compared to general-purpose 
+language models. However, despite their strengths in program synthesis, models such as DeepSeek-Coder operate without domain-specific knowledge of 
+robotic systems. They lack an inherent understanding of ROS concepts, mission semantics, or the relationships between sensors, algorithms, and 
+execution contexts. As a result, while code-aware language models can reliably generate structured configuration artifacts, they require an external
+abstraction layer to provide semantic grounding and ensure that generated outputs correspond to valid and meaningful robotic system configurations.
