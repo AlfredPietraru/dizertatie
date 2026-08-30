@@ -110,18 +110,32 @@ def _styles(count: int) -> list[LinguisticStyle]:
     return [STYLES[index % len(STYLES)] for index in range(count)]
 
 
-def build_generation_prompt(seed: SyntheticSeed, requested_styles: list[LinguisticStyle] | None = None) -> tuple[str, list[LinguisticStyle]]:
+def build_generation_prompt(
+    seed: SyntheticSeed,
+    requested_styles: list[LinguisticStyle] | None = None,
+    excluded_texts: list[str] | None = None,
+) -> tuple[str, list[LinguisticStyle]]:
     styles = requested_styles or _styles(seed.paraphrase_count)
     payload = seed.model_dump(mode="json")
-    return ("Generate one mission sentence for each requested style. Preserve the structured intent exactly.\n\n"
-            f"Seed:\n{json.dumps(payload, indent=2, sort_keys=True)}\n\n"
-            f"Requested styles in order:\n{json.dumps(styles)}"), styles
+    prompt = (
+        "Generate one mission sentence for each requested style. Preserve the structured intent exactly.\n\n"
+        f"Seed:\n{json.dumps(payload, indent=2, sort_keys=True)}\n\n"
+        f"Requested styles in order:\n{json.dumps(styles)}"
+    )
+    if excluded_texts:
+        prompt += (
+            "\n\nThe following mission sentences were already generated. Every new sentence "
+            "must use substantively different wording while preserving exactly the same intent:\n"
+            f"{json.dumps(excluded_texts, indent=2)}"
+        )
+    return prompt, styles
 
 
 def generate_paraphrases(seed: SyntheticSeed, backend: ParaphraseBackend, *,
                          requested_styles: list[LinguisticStyle] | None = None,
-                         candidate_series: str = "p", replacement: bool = False) -> tuple[list[SyntheticCandidate], str]:
-    prompt, styles = build_generation_prompt(seed, requested_styles)
+                         candidate_series: str = "p", replacement: bool = False,
+                         excluded_texts: list[str] | None = None) -> tuple[list[SyntheticCandidate], str]:
+    prompt, styles = build_generation_prompt(seed, requested_styles, excluded_texts)
     raw = backend(REPLACEMENT_SYSTEM_PROMPT if replacement else SYSTEM_PROMPT, prompt)
     try: batch = GeneratedBatch.model_validate_json(raw)
     except ValueError as error: raise ValueError(f"malformed generated batch for {seed.id}: {error}") from error

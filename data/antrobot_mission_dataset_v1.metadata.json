@@ -1,0 +1,19 @@
+{
+  "candidate_history": "artifacts/dataset_generation/antrobot_missions_v1/candidates.jsonl",
+  "dataset_file": "data/antrobot_mission_dataset_v1.jsonl",
+  "generated_at": "2026-08-30T15:58:07.824811+00:00",
+  "generator_model": "qwen2.5-coder:7b",
+  "ground_truth_generated_by_model": false,
+  "ground_truth_source": "repository-grounded seed annotations",
+  "manual_repair_log": "artifacts/dataset_generation/antrobot_missions_v1/manual_repairs.json",
+  "manually_repaired_record_count": 14,
+  "model_generated_record_count": 136,
+  "paraphrase_review_status": "assistant_reviewed_pending_author_review",
+  "paraphrases_per_seed": 10,
+  "raw_response_directory": "artifacts/dataset_generation/antrobot_missions_v1/raw",
+  "record_count": 150,
+  "schema_version": "1.0",
+  "seed_count": 15,
+  "seed_file": "data/antrobot_seed_missions_v1.jsonl",
+  "semantic_rejection_log": "artifacts/dataset_generation/antrobot_missions_v1/semantic_rejections.json"
+}
