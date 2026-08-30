@@ -12,14 +12,12 @@ flowchart TD
     SYS --> CFG[Physical configuration representation]
     SYS --> EVD[Grounded parameter evidence]
     CFG --> TPL[Templates, complete baseline, lean manifest]
-    EVD --> SEM[Optional LLM semantic enrichment]
 
     REG[Human-authored capability registry] --> START[Startup cross-validation]
     SYS --> START
     CFG --> START
     EVD --> START
     TPL --> START
-    SEM -. optional .-> START
 
     USER[User mission] --> CAP[LLM capability interpretation]
     START --> CAP
@@ -61,7 +59,6 @@ flowchart LR
     SYS --> HASH[Artifact freshness hashes]
     SLOTS --> HASH
     HASH --> EVIDENCE
-    HASH --> ENRICH[Optional semantic enrichment]
 ```
 
 ## 3. Parameter retrieval and separated LLM reasoning
