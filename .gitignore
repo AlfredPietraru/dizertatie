@@ -9,3 +9,11 @@ launch_templates/launch_files
 launch_templates/yaml_files
 debug_output
 zresearch_report/*.pdf
+zresearch_report/*.aux
+zresearch_report/*.bbl
+zresearch_report/*.blg
+zresearch_report/*.fdb_latexmk
+zresearch_report/*.log
+zresearch_report/*.out
+zresearch_report/*.fls
+zresearch_report/*.toc

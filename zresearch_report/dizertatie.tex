@@ -27,6 +27,7 @@
 \usepackage[bookmarks,unicode,hidelinks]{hyperref}
 
 \usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{amsmath} % extended mathematical notation
 \usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
 \usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
 \usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
@@ -64,8 +65,12 @@ COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
 {\Large #1}  % header (university, faculty, department)
 \vspace{50pt}
 \begin{tabular}{p{6cm}p{4cm}}
-\includegraphics[scale=0.8]{pics/upb-logo.jpg} &
-	\includegraphics[scale=0.5,trim={14cm 11cm 2cm 5cm},clip=true]{pics/cs-logo.pdf}
+\IfFileExists{pics/upb-logo.jpg}{%
+  \includegraphics[scale=0.8]{pics/upb-logo.jpg}%
+}{} &
+\IfFileExists{pics/cs-logo.pdf}{%
+  \includegraphics[scale=0.5,trim={14cm 11cm 2cm 5cm},clip=true]{pics/cs-logo.pdf}%
+}{}
 \end{tabular}
 
 \vspace{105pt}

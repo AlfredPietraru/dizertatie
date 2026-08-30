@@ -31,7 +31,6 @@ The application recognizes three operational modes. The analysis mode extracts a
 
 The first methodological requirement is to construct trustworthy knowledge about the ROS~2 project. A natural-language request cannot be mapped reliably to configuration changes if the reasoning process does not know which nodes exist, which parameters they consume, how they communicate, or which deployment path is active. The extraction stage therefore treats the repository as a heterogeneous source of evidence rather than as a collection of isolated files.
 
-\subsection{Python ROS entity extraction}
 
 Python source analysis identifies ROS-specific entities declared by the application. The extracted information includes nodes, declared parameters, parameter reads, publishers, subscriptions, services, clients, actions, timers, quality-of-service descriptions, and transform-related operations. Source locations and unresolved expressions are retained rather than discarded. This is important because later reasoning must distinguish a directly observed fact from an expression that could not be resolved statically.
 
@@ -39,7 +38,6 @@ Each category contributes different grounding information. A declared parameter 
 
 The purpose of source analysis is not to reconstruct arbitrary Python execution perfectly. Its role is to recover a bounded set of objective ROS facts sufficient to ground configuration reasoning. When a value depends on dynamic computation or an unsupported Python pattern, the method records the unresolved expression instead of fabricating a result.
 
-\subsection{Launch and deployment extraction}
 
 Source-level node declarations do not by themselves describe the deployed robot. ROS~2 launch descriptions determine which executables are instantiated, which namespaces and node names become effective, which conditions enable or disable them, and how launch arguments flow through included launch files. The method therefore extracts launch declarations, include relationships, launch arguments, substitutions, parameter sources, remappings, namespaces, conditions, package names, executable names, and root-level overrides.
 
@@ -47,13 +45,11 @@ The analysis is rooted in one or more selected launch entry points. Rooting is n
 
 Launch arguments are retained as configuration elements because they often control whether a subsystem is active or which implementation is selected. Conditions are preserved because the presence of a node in source code does not imply that it is enabled in the current baseline. Remappings and namespaces are resolved because communication compatibility depends on effective ROS names, not merely on the literals appearing in individual source files.
 
-\subsection{Parameter-file extraction}
 
 ROS parameter files provide another layer of configuration. The method extracts node selectors, nested parameter paths, scalar and structured values, and the provenance of each assignment. Wildcard selectors require special treatment. A wildcard assignment may configure several deployed nodes, but it still corresponds to one writable location in the source configuration file. The method records every affected component while preserving the fact that the value is controlled by one physical slot.
 
 Parameter-file extraction also captures the relationship between declared defaults and deployment-time values. A parameter may have a default in Python, an assignment in YAML, and an additional launch-level source. Retaining these layers makes it possible to determine both the effective value and the location that must be modified.
 
-\subsection{Package metadata and repository boundary}
 
 Package metadata provides package identities, dependencies, executable declarations, and local versus external boundaries. Local packages can be connected to extracted source evidence. External components may be known through launch descriptions even when their implementation source is unavailable. Such components remain in the deployment representation, but their internal interfaces are not invented.
 
@@ -63,31 +59,26 @@ The output of extraction is therefore not a claim that the entire ROS graph is k
 
 The extracted sources describe overlapping views of the same robot. Python analysis describes possible node behavior, launch analysis describes deployment, parameter files describe configuration assignments, and package metadata describes software boundaries. The integration stage combines these views into one coherent representation of the deployed system.
 
-\subsection{Deployment instances}
 
 The central unit of the integrated model is the deployment instance. A deployment instance connects a launch-level node action to its source-level node representation when the source is available. It records the effective node name, namespace, package, executable, activation condition, source reference, parameter sources, interfaces, and resolution status.
 
 The distinction between a source component and a deployment instance is important. One source component may be instantiated more than once, under different names or namespaces, or may remain disabled under the selected root launch. Conversely, a launch description may instantiate an external component for which no local source model exists. The integrated representation retains both cases without conflating them.
 
-\subsection{Effective configuration and provenance}
 
 Configuration values can originate from several layers. The method retains the declared default, YAML assignment, launch-provided parameter source, root override, and final effective value whenever those layers are available. Rather than storing only the final number or string, the model stores the ordered provenance that produced it.
 
 Provenance has two roles. First, it supports traceability: a proposed change can be connected to the source or configuration location that controls it. Second, it supports correct application: modifying a Python default is not equivalent to modifying a YAML assignment that overrides that default in the deployed system. The method must target the controlling physical location rather than the earliest declaration encountered during extraction.
 
-\subsection{Effective interfaces and system relationships}
 
 Publishers, subscriptions, services, and other ROS entities are projected into the deployment context. Namespaces and remappings are applied to obtain effective interface names. Where sufficient local evidence exists, compatible publisher--subscription pairs are represented as confirmed communication edges. The model retains endpoint role, effective name, interface type, owning component, and available quality-of-service information.
 
 Only relationships supported by evidence are asserted. When an endpoint belongs to an external package whose source cannot be inspected, the method records partial knowledge rather than assuming a complete connection. This conservative treatment is essential because the unified model later serves as evidence for both deterministic validation and language-model reasoning.
 
-\subsection{Resolution status and unresolved facts}
 
 Every deployment instance and relationship carries an explicit resolution status. Locally resolved instances have source evidence and known extracted interfaces. External instances are represented as deployed components with unknown internal behavior. Partial or unresolved launch expressions are collected in a dedicated set of unresolved facts.
 
 Uncertainty is therefore represented in the data rather than hidden in a narrative warning. Later stages can distinguish a confirmed missing connection from one that cannot be verified because an external component is opaque. This prevents the system from reporting certainty where the repository does not provide it.
 
-\subsection{Physical configuration representation}
 
 The integrated model describes effective parameter occurrences, but configuration application requires writable physical locations. These two concepts are not always one-to-one. The method therefore projects the system model into a configuration representation whose records correspond to physical launch arguments and ROS parameter slots.
 
@@ -97,7 +88,6 @@ This design allows hardware dimensions, algorithm settings, topic names, frame i
 
 When one wildcard YAML value affects multiple components, the representation contains one configuration record with multiple affected components. This prevents the reasoning process from proposing contradictory values for aliases that ultimately write to the same location.
 
-\subsection{Frozen model and freshness}
 
 The integrated model and the physical configuration representation are versioned and saved as frozen artifacts. Here, frozen means that they are treated as immutable inputs for a run or experiment. It does not refer to a ROS runtime feature. When source code, launch structure, parameter files, or extraction logic changes, the dependent artifacts must be regenerated in order.
 
@@ -107,7 +97,6 @@ This frozen boundary makes the language-model experiment reproducible. The same 
 
 The deterministic model can establish that a parameter exists, that its current value is a particular number, and that it is read by a given component. It does not inherently understand that a phrase such as ``odometry updates are too infrequent'' refers to a frequency parameter, or that a wheel diameter stated by the user must be converted to a wheel radius. The next part of the method converts extracted facts into bounded semantic context suitable for language-model reasoning.
 
-\subsection{Grounded parameter evidence}
 
 For every configuration record, the method constructs a parameter-evidence package. The package includes the parameter identity, name, type, default and current values, canonical and affected components, declaration excerpts, read and usage excerpts, related ROS interfaces, provenance, extracted relationships, and related parameter identifiers.
 
@@ -115,19 +104,16 @@ Evidence excerpts are deliberately bounded. The method does not copy entire sour
 
 This structure separates facts from interpretation. The source excerpt is deterministic evidence; a statement about what the excerpt means is a model hypothesis. Keeping both makes the model's conclusions inspectable without treating generated prose as repository truth.
 
-\subsection{Optional semantic enrichment}
 
 An optional offline language-model stage can enrich each parameter with a description, physical quantity, unit, semantic category, behavioral effects, constraints, related parameters, confidence, and cited evidence. The enrichment does not overwrite the deterministic system model or parameter evidence. It is stored as a separate, replaceable artifact.
 
 The enrichment artifact records the model identity, prompt version, and hashes of the system and configuration models from which its evidence was derived. If those inputs change, the enrichment is considered stale. This makes semantic enrichment suitable as an experimental variable: the system can reason with deterministic evidence alone or with additional model-generated semantics, and the two conditions remain distinguishable.
 
-\subsection{Context variants}
 
 The method defines progressively richer context variants in order to study which forms of grounding improve reasoning. The minimal variant contains identifiers, names, components, kinds, types, and current values. The semantic variant adds descriptions, quantities, units, effects, and constraints. The source variant adds declaration and usage evidence. The system variant adds related ROS interfaces. The graph variant additionally exposes parameter relationships and expands the candidate set through the local relationship graph.
 
 These variants serve two purposes. Operationally, they bound how much information is provided to the model. Experimentally, they support ablation studies in which the model, prompts, task set, and retrieval limits remain fixed while the available evidence changes.
 
-\subsection{Stable instructions and request-specific context}
 
 The language-model boundary distinguishes stable task instructions from request-specific grounding. Capability interpretation uses a stable instruction context for the duration of an application run because the supported capability catalogue and its response contract do not change between missions. Parameter selection and value reasoning use stable instruction templates, but their final contexts are assembled for each request. Selection receives the parameters retrieved for the current mission and the current system realization. Value reasoning receives only the records selected in the preceding stage and their relevant relationships.
 
@@ -137,7 +123,6 @@ Consequently, the method does not treat a complete, context-filled prompt as a p
 
 Natural-language configuration reasoning is decomposed into three distinct language-model decisions separated by deterministic operations. The first decision concerns supported robot capabilities. The second concerns which parameters are relevant. The third concerns what values those selected parameters should receive. This decomposition allows each boundary to be constrained and evaluated separately.
 
-\subsection{Capability interpretation}
 
 The capability interpreter receives the user's mission and a language-model-safe projection of the capability registry. The registry represents human-authored robot design knowledge: supported capabilities, available implementations, descriptive characteristics, and dependency information. It does not expose concrete renderer assignments to the language model. The model therefore decides what capability the user requested, not how launch files should be manipulated.
 
@@ -145,7 +130,6 @@ The interpretation is sparse. For each supported capability, the model may mark 
 
 The interpreter can also return terminal outcomes. An unsupported outcome indicates that the request cannot be expressed using the available robot capabilities. A clarification outcome indicates that information required for a material decision is missing. Terminal outcomes stop the pipeline before configuration generation.
 
-\subsection{Deterministic capability realization}
 
 After schema validation, capability choices are expanded using the full registry. Dependency requirements are applied, conflicting capability or implementation choices are rejected, and component claims are merged deterministically. The result records active components, selected implementations, displaced implementations, required connections, concrete launch-level realization values, and provenance explaining why every claim exists.
 
@@ -153,19 +137,16 @@ The capability registry is validated against the frozen system before mission pr
 
 The realization method is intentionally bounded to the supported robot rather than formulated as a universal component-selection solver. It applies explicit capability dependencies and conflicts declared by the robot designer. This preserves deterministic behavior without introducing a generic constraint language unrelated to the central AI research problem.
 
-\subsection{ROS orchestration verification}
 
 Required connections declared by the selected implementations are resolved against the unified system model. The method checks source and target components, publisher and subscription roles, effective names, interface types, wiring bindings, and known quality-of-service policies.
 
 A locally known missing endpoint, incompatible interface type, unresolved required binding, or known quality-of-service incompatibility invalidates the realization. A connection involving an opaque external component may be classified as partially verified rather than falsely confirmed. The output is a mission-specific orchestration plan describing active deployment components and the verification state of required connections.
 
-\subsection{Complete parameter catalogue}
 
 Capability realization does not filter the parameter space to active components. The complete physical configuration representation remains available because a mission may intentionally configure an implementation while enabling it, may change hardware values shared by several components, or may refer explicitly to an inactive component. Each catalogue record combines deterministic configuration facts, grounded evidence, and optional semantic enrichment.
 
 All catalogue records remain candidates in principle, but they are not all inserted into one language-model prompt. A deterministic retrieval stage first constructs a bounded candidate set.
 
-\subsection{Deterministic lexical retrieval}
 
 The mission text and searchable parameter fields are normalized into tokens. Normalization separates identifiers, underscores, path separators, and compound names; removes common stop words; and applies lightweight stemming. Each parameter becomes a searchable document whose fields depend on the selected context variant.
 
@@ -183,19 +164,16 @@ The highest-ranked candidates are retained up to a configured limit. Under the g
 
 Lexical retrieval is intentionally a transparent baseline rather than a claim of full semantic search. It searches semantically meaningful fields, but the matching operation itself remains token based. The language model performs semantic selection only after this deterministic candidate construction.
 
-\subsection{Bounded context construction}
 
 Retrieved records are serialized in rank order under a fixed character budget. The context records which identifiers were included, which candidates were omitted because of the budget, how each record was retrieved, and which relationship edges are relevant. If a large evidence record would exceed the budget, lower-priority evidence is removed before the parameter identity and basic constraints are discarded.
 
 This bounded construction provides a reproducible context window and a measurable retrieval boundary. If a correct parameter is absent from the supplied context, the failure can be attributed to retrieval rather than to parameter selection.
 
-\subsection{Language-model parameter selection}
 
 The parameter-selection model receives the original mission, the bounded candidate records, the current system realization, the ROS orchestration state, and a strict structured-output contract. It must either select one or more supplied parameter identifiers or return a terminal status indicating no parameter change, unsupported intent, or a need for clarification.
 
 For a valid selection, each selected record includes a concise relevance explanation and may cite grounding evidence. Deterministic validation rejects identifiers absent from the supplied context, duplicate identifiers, and evidence references that were not provided for that parameter. The language model therefore cannot introduce a parameter directly from the full catalogue or fabricate a source citation.
 
-\subsection{Separate value reasoning}
 
 Value reasoning is invoked only after a valid selection. It receives the original mission, the validated selection, the selected parameter records, their current values, their known constraints, and relevant relationships. It does not receive the full catalogue. Its task is to propose a new value for each required parameter and give a concise, externally verifiable reason.
 
@@ -203,7 +181,7 @@ Separating selection from value reasoning prevents the model from hiding an inco
 
 The value stage may return a clarification or unsupported result if the selected context does not contain enough information to determine a responsible change. For a valid result, every proposed change must repeat the current value observed in the frozen catalogue. This old-value check prevents a response generated against stale context from being applied silently.
 
-\section{Configuration Plan Generation}
+\section{Configuration Plan Generation and Validation}
 
 The conclusions of the language-model stages are not applied directly to files. They are converted into explicit intermediate plans that form a deterministic boundary between inference and system modification.
 
@@ -217,29 +195,23 @@ The plan also retains evidence and provenance. Capability values record which se
 
 Introducing this representation has several methodological advantages. It prevents direct language-model file editing, establishes a stable contract for validation, allows the same plan to be rendered through different output strategies, and makes the proposed change independently inspectable before application.
 
-\section{Configuration Validation}
-
 Validation is distributed across the method so that each stage checks the properties for which it has sufficient information. The validator does not attempt to replace semantic reasoning with an extensive hand-written configuration policy. Instead, it verifies objective properties that can be established deterministically.
 
-\subsection{Artifact and registry validation}
 
 At application start-up, the system model, physical configuration representation, renderer manifest, parameter evidence, and optional semantic enrichment are checked for supported schema versions. Evidence and enrichment contain hashes of the system and configuration models from which they were derived. A mismatch marks the artifact as stale and prevents its use.
 
 The capability registry is cross-validated against these artifacts. Component identifiers, implementation references, realization keys, required connection endpoints, and wiring bindings must resolve. Dependency cycles and inconsistent declarations are rejected before mission processing.
 
-\subsection{Interpretation and selection validation}
 
 Every language-model output must conform to its structured response contract. Capability selections may contain only supported capability and implementation values. Sparse-state invariants prevent an implementation from being named unless its capability is enabled. Unsupported and clarification outcomes must contain the information required to explain or resolve the terminal decision and cannot contain a partial executable selection.
 
 Parameter selection is constrained to identifiers and evidence supplied in the bounded context. Duplicate identifiers and invented evidence are rejected. These checks establish that the model's result is grounded in the current retrieval output, although they do not assert that its semantic choice is correct.
 
-\subsection{Value validation}
 
 The value stage cannot introduce a parameter that was not selected. Each reported old value must equal the current value in the frozen catalogue. New values are checked against the parameter type, allowed value set, and known numerical bounds. Unknown identifiers and duplicate changes are rejected.
 
 Where multiple effective parameter occurrences are controlled by one physical slot, the slot representation prevents divergent proposals by construction. Where separate physical slots are related, the relationship is supplied as reasoning context and can be evaluated as part of the task annotation; the system does not impose a universal rule that every semantically related parameter must always have the same value.
 
-\subsection{Plan and rendering validation}
 
 The merged plan is checked against the complete physical configuration representation and the renderer interface. Every key must exist and be renderable. Capability and parameter claims targeting the same key must agree. The plan remains sparse, but the resolved rendering context must become complete after it is overlaid on the baseline.
 
@@ -247,7 +219,7 @@ Generated launch files are checked for valid Python syntax, and generated parame
 
 These validation layers establish structural and factual correctness. They do not claim to prove that every semantically plausible parameter change is physically safe for every robot or environment. Such domain assurance requires additional system-specific constraints or experimental validation.
 
-\section{Configuration Application}
+\section{Configuration Application and End-to-End Workflow}
 
 Once the sparse plan has passed validation, it is applied deterministically through a complete baseline and generated templates. The baseline contains one value for every physical configuration slot. Mission values are overlaid on that baseline, so any value not mentioned by the plan remains unchanged.
 
@@ -257,37 +229,29 @@ Application produces a mission-specific launch wrapper, parameter files, a recor
 
 The method stops at artifact production. It does not automatically start ROS~2 nodes, install external packages, or claim that generated behavior has been validated on a physical robot. Deployment in a suitable ROS~2 environment and simulation or hardware-level behavioral validation remain separate activities.
 
-\section{End-to-End Workflow}
-
 Consider the request: ``Build a map using KISS-ICP and limit its range to 20 metres.'' This request combines a high-level capability choice, an implementation choice, and a lower-level algorithm parameter change, making it representative of the complete method.
 
-\subsection{Frozen context}
 
 Before the request is processed, the repository has already been analyzed. The frozen system model identifies the deployed mapping, laser, odometry, and conversion components; the configuration representation contains their launch arguments and ROS parameter slots; and the evidence artifact connects each slot to declarations, usages, interfaces, and provenance. The capability registry declares mapping and odometry as supported capabilities, with KISS-ICP as one available odometry implementation.
 
-\subsection{Capability interpretation and realization}
 
 The capability interpreter maps ``build a map'' to the mapping capability and maps ``using KISS-ICP'' to the KISS-ICP odometry implementation. It does not attempt to turn ``20 metres'' into a capability. That phrase remains available for the parameter-reasoning stages.
 
 Deterministic realization activates the supported mapping implementation, activates KISS-ICP, activates the laser-scan-to-point-cloud conversion required by that implementation, and displaces the alternative kinematic ICP implementation. The realization produces the corresponding launch-level values and records the reason for every component and value.
 
-\subsection{ROS orchestration verification}
 
 The required sensor-to-odometry chain is checked against the frozen system model. The laser driver must provide a laser scan to the conversion component, and the conversion component must provide a point cloud to KISS-ICP. Effective topic names, interface types, roles, wiring bindings, and known quality-of-service settings are compared. A confirmed structural incompatibility would stop the request before parameter reasoning.
 
-\subsection{Retrieval and parameter selection}
 
 The complete catalogue remains available, but deterministic lexical retrieval ranks parameter records using the mission terms. Records associated with KISS-ICP range are expected to rank highly because their identifiers, names, descriptions, constraints, or source evidence contain relevant range concepts. Under graph context, related KISS-ICP parameters may be included as bounded neighbors.
 
 The selection model receives only the retrieved context and selects the maximum-range parameter because the request explicitly limits the implementation's sensing range. It should not select unrelated mapping publication frequencies, frame names, or topic parameters. The selected identifier and any cited evidence are validated against the supplied context.
 
-\subsection{Value reasoning and plan generation}
 
 The value model receives the selected maximum-range record, its current value and type, its constraints, relevant relationships, and the original request. It proposes a new value of 20 metres and explains that the value is directly stated by the user. The old value reported by the model is compared with the frozen catalogue, and the new value is checked as a valid numerical value for that parameter.
 
 The validated parameter change is merged with the launch-level values from capability realization. The resulting sparse plan contains only the values needed to activate mapping, select KISS-ICP and its dependency, displace the alternative implementation, and set the requested maximum range. All unrelated baseline values remain absent from the plan.
 
-\subsection{Validation and application}
 
 The plan is checked for key existence, type correctness, renderability, and conflicts. It is then overlaid on the complete baseline and rendered through predefined launch and parameter templates. The resulting files are checked structurally and packaged with traceability information. At no point does the language model directly edit a ROS file or select an output path.
 

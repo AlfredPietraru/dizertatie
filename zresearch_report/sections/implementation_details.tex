@@ -12,7 +12,6 @@ The repository implementation is divided according to responsibility rather than
 
 \section{ROS 2 Information Extraction}
 
-\subsection{Python source analysis}
 
 ROS node extraction is implemented as static AST analysis. Every Python source file under the selected workspace roots is parsed without importing or executing it. Files in build, installation, log, virtual-environment, cache, and version-control directories are ignored. Parse failures are retained in the output rather than terminating analysis of the remaining repository.
 
@@ -28,7 +27,6 @@ A small static resolver evaluates expressions that are safe and repository-local
 
 When an expression cannot be evaluated, the extractor stores its textual form, symbolic dependencies, and resolution status. Conditional and loop contexts are also preserved. This approach is intentionally conservative: a dynamic expression remains explicit evidence of incomplete resolution rather than being replaced with a guessed value. Stable identifiers derived from source location and entity kind make extracted records reproducible across repeated runs on unchanged source.
 
-\subsection{Launch description analysis}
 
 ROS~2 launch files are Python programs, so they are analyzed through a dedicated AST resolver rather than executed. The extractor recognizes launch arguments, node actions, included launch descriptions, launch configurations, package-share substitutions, path substitutions, node parameter sources, remappings, command-line arguments, namespaces, and conditional actions.
 
@@ -38,7 +36,6 @@ Each launch file initially produces a local record. During system integration, i
 
 For each deployed node action, the extractor retains package, executable, requested name and namespace, parameter sources, remappings, launch arguments, condition, and source location. This information is later matched with source-level node facts. Unresolved launch expressions and missing include targets are reported explicitly.
 
-\subsection{YAML configuration extraction}
 
 Parameter-file extraction scans YAML files under the selected source roots and accepts top-level mappings that contain ROS \texttt{ros\_\_parameters} entries. The parser handles scalar, list, and nested mapping values. Nested parameter dictionaries are flattened into addressable parameter paths while the original hierarchy is preserved for rendering.
 
