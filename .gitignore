@@ -8,6 +8,7 @@ artifacts
 launch_templates/launch_files
 launch_templates/yaml_files
 debug_output
+.agents
 zresearch_report/*.pdf
 zresearch_report/*.aux
 zresearch_report/*.bbl
