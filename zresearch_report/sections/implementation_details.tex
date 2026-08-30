@@ -1,20 +1,12 @@
 \chapter{Implementation Details}
-
 \section{Implementation Overview}
-
 The prototype was implemented primarily in Python and operates directly on a ROS~2 workspace. Its organization follows the hybrid architecture introduced in the previous chapter: deterministic modules extract and integrate repository facts, a language-model layer performs bounded semantic reasoning, and deterministic validation and rendering modules convert accepted decisions into ROS~2 configuration artifacts. The implementation avoids executing the analyzed source code, allowing repository analysis to remain independent of an installed or running ROS graph.
-
 Python's Abstract Syntax Tree infrastructure is used to analyze ROS node and launch source files. Structured intermediate representations are validated with Pydantic and serialized as JSON artifacts. ROS parameter files are read as YAML mappings, with a dependency-free parser for the supported ROS subset when an external YAML package is unavailable. Jinja2 with strict undefined-variable handling is used to materialize launch and parameter files. Local language-model inference is accessed through Ollama's chat endpoint using structured JSON schemas and deterministic temperature settings.
-
 The application is controlled through one flat configuration document located beside the orchestration module. It selects one of three operations: repository analysis, validation of an existing system model, or processing of a natural-language mission. The same document defines artifact paths, prompt paths, the Ollama model, retrieval limits, and output locations. Unknown or invalid fields are rejected before the selected operation begins.
-
 The repository implementation is divided according to responsibility rather than according to individual experiments. Extraction modules produce source, launch, and configuration facts. Integration modules create the deployed-system representation. Mission modules implement capability interpretation, retrieval, parameter selection, value reasoning, and evaluation contracts. Templating modules derive the physical configuration interface and render output artifacts. Validation modules check the system model and generated scenarios. This structure preserves a one-way dependency flow from schemas and extraction toward integration, reasoning, rendering, and validation.
 
 \section{ROS 2 Information Extraction}
-
-
 ROS node extraction is implemented as static AST analysis. Every Python source file under the selected workspace roots is parsed without importing or executing it. Files in build, installation, log, virtual-environment, cache, and version-control directories are ignored. Parse failures are retained in the output rather than terminating analysis of the remaining repository.
-
 The extractor first preserves ordinary Python facts, including imports, module assignments, classes, methods, functions, entry points, conditions, and loop contexts. A second interpretation step identifies ROS-specific constructs. It recognizes node classes and common factory calls for parameters, publishers, subscriptions, services, clients, timers, action clients and servers, quality-of-service profiles, and transform utilities. For example, a declaration such as
 
 \begin{verbatim}
@@ -22,79 +14,44 @@ self.declare_parameter("wheel_radius", 0.03)
 \end{verbatim}
 
 is represented as a parameter named \texttt{wheel\_radius}, with a numerical default and a source location. Calls that read the same parameter are associated with the declaration, allowing later evidence construction to include both where the parameter is exposed and how its value is used.
-
 A small static resolver evaluates expressions that are safe and repository-local. It supports literals, names with known assignments, lists, tuples, dictionaries, unary operations, selected binary operations, and formatted strings whose components can be resolved. Import aliases are qualified so that ROS calls can be recognized even when modules or symbols are renamed locally. Assignments are processed iteratively because the value of one expression may depend on an earlier symbol.
-
 When an expression cannot be evaluated, the extractor stores its textual form, symbolic dependencies, and resolution status. Conditional and loop contexts are also preserved. This approach is intentionally conservative: a dynamic expression remains explicit evidence of incomplete resolution rather than being replaced with a guessed value. Stable identifiers derived from source location and entity kind make extracted records reproducible across repeated runs on unchanged source.
-
-
 ROS~2 launch files are Python programs, so they are analyzed through a dedicated AST resolver rather than executed. The extractor recognizes launch arguments, node actions, included launch descriptions, launch configurations, package-share substitutions, path substitutions, node parameter sources, remappings, command-line arguments, namespaces, and conditional actions.
-
 Assignments are resolved iteratively before launch actions are interpreted. The launch resolver retains structured representations for substitutions that cannot be reduced immediately. For example, a launch argument reference remains identifiable as a launch-configuration dependency even when its final value is supplied by a parent launch file.
-
 Each launch file initially produces a local record. During system integration, include relationships are followed recursively from the configured root launch file. Arguments supplied by a parent include are propagated into the child context, and root overrides take precedence over inherited or declared defaults. The implementation therefore distinguishes files that merely exist in the repository from actions that participate in the selected deployment.
-
 For each deployed node action, the extractor retains package, executable, requested name and namespace, parameter sources, remappings, launch arguments, condition, and source location. This information is later matched with source-level node facts. Unresolved launch expressions and missing include targets are reported explicitly.
-
-
 Parameter-file extraction scans YAML files under the selected source roots and accepts top-level mappings that contain ROS \texttt{ros\_\_parameters} entries. The parser handles scalar, list, and nested mapping values. Nested parameter dictionaries are flattened into addressable parameter paths while the original hierarchy is preserved for rendering.
-
 Each profile records its source file, node or namespace selector, parameter mapping, flattened values, and a stable identifier. Ordinary node selectors and wildcard selectors are supported. A wildcard assignment is represented once as a physical YAML location and may later be associated with several deployment instances. This prevents the same source value from being exposed as several independently writable aliases.
-
 Together, the three extractors provide complementary views. Python analysis establishes what a node declares and how values participate in its behavior. Launch analysis establishes what is deployed and which substitutions, namespaces, remappings, and conditions are effective. YAML analysis establishes which values are supplied to the deployed components. None of these views is sufficient independently; the system model is produced by resolving them together.
 
 \section{System Model Construction}
-
 System-model construction begins with the selected root launch file and recursively resolves its include graph. Each node action becomes a deployment instance. Local deployment instances are matched to source-level ROS node records using package, executable, entry-point, and node-name information. Components whose implementation is not available in the workspace remain external deployment instances with unknown internal interfaces.
-
 Parameter resolution combines declaration defaults with launch and YAML configuration sources. The resulting record retains both the effective value and an ordered provenance chain. Consequently, the implementation can distinguish a Python declaration from the YAML assignment that controls the deployed value. This provenance is later projected into parameter evidence and into the modification targets used by the renderer.
-
 Launch conditions are evaluated under the propagated argument context to determine the baseline activation state. Effective node names and namespaces are resolved from launch declarations. Publishers and subscriptions discovered in source code are then projected into the deployment context by applying namespaces, parameter-driven topic values, and remappings. The same process retains message types, endpoint roles, owning instances, and quality-of-service descriptions where available.
-
 Confirmed local communication edges are created only when publisher and subscriber endpoints have compatible effective names and interface types. For example, the current AntRobot model confirms the wheel-odometry connection between the drive component and the joint-state estimator. External interfaces are not inferred from package names alone, so connections involving opaque packages remain partially known.
-
 The integrated representation also records include relationships, launch-argument flow, source inventories, unresolved facts, and validation coverage. A system-model validator checks unique deployment identifiers, interface references, connection endpoints, local source evidence, parameter uniqueness, and parameter provenance. External components are permitted to have unknown interfaces by design, while a locally resolved instance without source evidence is treated as an error.
-
 The effective-parameter representation is subsequently projected into physical configuration slots. Launch arguments are retained when they are forwarded by the root launch interface. ROS parameters are grouped by their controlling YAML target. Each slot records its canonical key, type, current and default values, provenance, target, affected components, relationships, and any extracted bounds. The current prototype derives 109 writable physical slots from 114 effective parameter occurrences, illustrating why effective occurrences and writable locations must remain separate concepts.
 
 \section{LLM Integration and Context Construction}
-
 The language-model integration uses Ollama as a local inference service. Requests are sent to the chat endpoint with a system message, a user message, temperature zero, and a JSON schema corresponding to the expected response type. The model response is accepted only as a single JSON object and is then validated against the relevant Pydantic contract. Surrounding prose, invented fields, malformed JSON, and schema-incompatible values are rejected.
-
 Three structured model calls are used during a mission. Capability interpretation produces a sparse selection over supported capabilities and implementations. Parameter selection chooses relevant parameter identifiers from a bounded candidate context. Value reasoning proposes new values only for the validated selection. Each call uses a response schema specific to its task.
-
 The capability instruction context is assembled from a versioned prompt template and a safe projection of the human-authored capability registry. This projection exposes descriptions, implementation choices, and characteristics but hides concrete renderer values. During one application run, the resulting capability instruction context remains stable while the user mission changes.
-
 Parameter reasoning requires request-specific context. A deterministic lexical retriever first scores every parameter in the complete catalogue against the mission. Searchable fields are selected by the configured context variant and may include identifiers, source names, components, values, source excerpts, ROS interfaces, and relationships. Exact parameter-name occurrences receive the highest priority, while other matches use field weighting and inverse document frequency. By default, the highest twelve lexical candidates are retained.
-
 In the graph variant, the initial candidates are expanded through extracted parameter relationships and shared topic or frame bindings. Expansion is limited by a configured hop count and a maximum of twenty-four candidates. The ranked records are then serialized under a 40,000-character budget. Each record includes its retrieval score, origin, and available evidence identifiers, making the candidate boundary reproducible and inspectable.
-
 The final selection context combines the candidate records with the current capability realization and ROS orchestration status. Its instruction template is stable, but the inserted context changes for every mission. The selection response may represent a valid set of parameter identifiers, no requested parameter change, an unsupported request, or a need for clarification. Selected identifiers must occur in the supplied context, and cited evidence must belong to the corresponding records.
-
 Value reasoning receives only the selected records, their current values, known constraints, and relevant relationships. This second prompt is also assembled per request. Separating the two calls allows selection quality and numerical reasoning quality to be evaluated independently and prevents the value stage from introducing a parameter that was never selected.
 
 \section{Configuration Generation and Validation}
-
 The nondeterministic boundary ends at structured capability and parameter conclusions. Capability choices are expanded deterministically through the validated capability registry. This expansion resolves required capabilities, selected and displaced implementations, component claims, required ROS connections, and concrete launch-level values. Required connections are checked against effective endpoints, interface types, topic or frame bindings, and known quality-of-service policies before parameter changes are considered executable.
-
 The parameter-selection response is validated against the bounded context. The value response is then checked against the selection and complete catalogue. Every proposal must identify a selected parameter, repeat the frozen current value, and supply a new value compatible with the parameter type, allowed set, and known numerical bounds. Duplicate or unknown identifiers are rejected.
-
 Validated capability values and parameter changes are merged into a sparse configuration plan. The plan contains only values affected by the current mission. If both sources target the same canonical key, their values must agree. This prevents update order from hiding a contradiction, such as capability realization enabling an implementation while parameter reasoning attempts to disable the same launch argument.
-
 The renderer begins with a generated baseline containing every physical configuration key. Optional scenario values and the mission plan are overlaid in a fixed order, and each stage is recorded as provenance. Before rendering, profile and mission values are validated against the configuration schema; after merging, the resolved context must contain every required key.
-
 Jinja2 templates are evaluated using strict undefined-variable behavior. The generated template definition has exact set equality between schema keys, baseline keys, and template references. Launch values are serialized into a wrapper launch description, while ROS parameters are written into package-overlay YAML files at predetermined targets. The LLM therefore never produces Python launch syntax, YAML structure, file paths, or installation routes.
-
 Generated launch files are parsed as Python, and generated YAML files are checked for a top-level mapping and valid ROS parameter sections. Each rendered file receives a SHA-256 digest and a record of its template, output route, deployment strategy, and referenced keys. Mission-time rendering performs these structural checks without reanalyzing the entire repository. A more expensive offline equivalence mode installs the generated overlay in an isolated analysis workspace, rebuilds the system model, and compares the active deployment and communication projections with the frozen reference.
 
 \section{Testing and Reproducibility}
-
 The test suite is organized into unit, integration, scenario, and equivalence levels. Unit tests cover Python and deployment extraction, configuration-slot construction, capability interpretation and realization, retrieval, parameter selection, value validation, template definition, application configuration, synthetic-data handling, and evaluation metrics. Integration tests construct the AntRobot system model and execute the mission pipeline with controlled model responses. Scenario tests verify that only declared configuration deltas are accepted. Equivalence tests confirm deterministic rendering, baseline preservation, physical-slot consistency, and optional reanalysis of generated bundles.
-
 At the current implementation checkpoint, 59 tests execute successfully. This number is reported only as an implementation sanity check; language-model accuracy is evaluated separately through the dissertation's experimental protocol.
-
 Deterministic artifacts are regenerated through one canonical workflow in dependency order: system model, physical configuration schema, templates and baseline, parameter evidence, and scenario bundles. The workflow removes stale generated directories rather than mixing outputs from different versions. A generation record stores schema versions, artifact counts, equivalence settings, and SHA-256 hashes for the produced files. Parameter evidence additionally stores hashes of its direct input models.
-
 The current AntRobot artifact contains 12 deployment instances, of which four are locally resolved and eight represent external components. Seven instances are enabled in the baseline. The model contains 114 effective parameter occurrences, nine known local interfaces, one confirmed local communication edge, and one explicitly unresolved deployment fact. Its validation report contains no structural errors. The physical configuration projection contains 16 launch arguments and 93 ROS parameter slots, for a total of 109 writable values. These figures demonstrate that the complete generation pipeline executes on the target workspace; they are not presented as language-model performance results.
-
 Reproducible LLM experiments retain the model identifier, prompt versions, context variant, retrieval limits, graph depth, dataset version, frozen artifact hashes, raw predictions, and structured errors. Temperature zero reduces sampling variability, while repeated-run reporting remains necessary because identical generation is not guaranteed across model versions, inference runtimes, or hardware environments.
