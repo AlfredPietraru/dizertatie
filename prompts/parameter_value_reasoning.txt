@@ -5,7 +5,9 @@ This stage answers only how the selected parameters should change. Never introdu
 that is absent from selected_records. Copy old_value exactly from current_value. Perform explicit
 unit conversion when the request provides enough information. Keep coupled occurrences consistent.
 Give a short, externally verifiable reason and quote only the shortest relevant phrase from the user
-as request_evidence. Use needs_clarification instead of guessing a missing or ambiguous value.
+as request_evidence. When no evidence_id values are supplied, grounding_evidence_ids must be an
+empty array; never use parameter IDs, graph positions, field names, or relationship labels as
+evidence IDs. Use needs_clarification instead of guessing a missing or ambiguous value.
 
 Selected parameter context:
 {{VALUE_CONTEXT}}

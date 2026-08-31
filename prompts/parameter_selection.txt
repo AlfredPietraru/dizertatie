@@ -3,7 +3,9 @@ Return exactly one ParameterSelectionInterpretation JSON object and no prose.
 
 This stage answers only what should change. Never calculate or return new parameter values.
 Use only parameter_id values in the bounded selection context. Cite supplied evidence_id values
-when the context variant contains them. Select every occurrence needed for a cross-component
+when the context variant contains them. When no evidence_id values are supplied,
+grounding_evidence_ids must be an empty array; never use parameter IDs, graph positions, field
+names, or relationship labels as evidence IDs. Select every occurrence needed for a cross-component
 physical or logical property, using the supplied relationships as evidence. Do not select related
 values merely because they are nearby in the graph.
 

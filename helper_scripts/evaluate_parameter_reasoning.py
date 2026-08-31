@@ -13,6 +13,7 @@ from ros_config_builder.mission import (
     CapabilitySelections, OllamaBackend, ParameterReasoner,
     ParameterSelectionInterpretation, ParameterValueInterpretation,
     derive_parameter_catalogue, enrichment_by_parameter_id, evaluate_parameter_reasoning,
+    build_parameter_selection_system_context,
     evidence_by_parameter_id, load_capability_registry, load_parameter_evidence_artifact,
     load_parameter_reasoning_tasks, load_semantic_enrichment_artifact,
     parameter_evidence_artifact_matches,
@@ -25,7 +26,7 @@ from ros_config_builder.orchestrate import load_environment
 from ros_config_builder.templating import TemplateConfigurationSchema, TemplateManifest
 
 
-VARIANTS = ("names_values", "semantic", "source", "system", "graph")
+VARIANTS = ("names_values", "semantic", "source", "system", "graph", "llm_semantic")
 
 
 def _digest(path: Path) -> str:
@@ -47,7 +48,7 @@ def main() -> int:
                         default=Path("prompts/parameter_value_reasoning.txt"))
     parser.add_argument("--semantic-enrichment", type=Path, default=None)
     parser.add_argument("--context-variant", action="append", choices=VARIANTS)
-    parser.add_argument("--top-k", type=int, default=12)
+    parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--graph-hops", type=int, default=1)
     parser.add_argument("--include-no-change", action="store_true")
     parser.add_argument("--allow-pending-review", action="store_true")
@@ -121,10 +122,10 @@ def main() -> int:
         )
         report = evaluate_parameter_reasoning(
             dataset, reasoner, catalogue,
-            system_context={
-                "system_realization": realization.model_dump(mode="json"),
-                "ros_orchestration": orchestration.model_dump(mode="json"),
-            },
+            system_context=build_parameter_selection_system_context(
+                realization.model_dump(mode="json"),
+                orchestration.model_dump(mode="json"),
+            ),
             wiring_bindings=manifest.get("wiring_bindings", {}),
             include_no_change=args.include_no_change,
         )

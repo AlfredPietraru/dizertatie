@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from ros_config_builder.mission import (
-    MissionInterpretation, derive_parameter_catalogue, realize_capabilities,
+    MissionInterpretation, build_parameter_selection_system_context,
+    derive_parameter_catalogue, realize_capabilities,
     resolve_ros_orchestration,
 )
 from ros_config_builder.orchestrate import (
@@ -331,10 +332,10 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
                 failure_stage = "parameter_reasoning"
                 reasoning = application.parameter_reasoner.reason(
                     case["mission"], catalogue,
-                    system_context={
-                        "system_realization": realization.model_dump(mode="json"),
-                        "ros_orchestration": orchestration.model_dump(mode="json"),
-                    },
+                    system_context=build_parameter_selection_system_context(
+                        realization.model_dump(mode="json"),
+                        orchestration.model_dump(mode="json"),
+                    ),
                     wiring_bindings=application.manifest.get("wiring_bindings", {}),
                 )
         except Exception as caught:  # Every failed inference/validation remains an evaluation failure.

@@ -8,7 +8,7 @@
   "system_model": "artifacts/ros_system_model/ros_system_model.json",
   "configuration_schema": "artifacts/template_configuration/template_configuration_schema.json",
   "parameter_evidence": "artifacts/semantic_parameters/evidence.json",
-  "semantic_enrichment": null,
+  "semantic_enrichment": "artifacts/semantic_parameters/enrichment_v2/enrichment.json",
   "template_directory": "configuration_templates",
   "capability_registry": "configuration_templates/capability_registry.yaml",
 
@@ -19,8 +19,8 @@
   "ollama_host": null,
   "environment_file": ".env",
 
-  "context_variant": "graph",
-  "retrieval_top_k": 12,
+  "context_variant": "llm_semantic",
+  "retrieval_top_k": 10,
   "graph_hops": 1,
 
   "root_launch_files": [
