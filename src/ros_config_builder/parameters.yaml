@@ -8,7 +8,7 @@
   "system_model": "artifacts/ros_system_model/ros_system_model.json",
   "configuration_schema": "artifacts/template_configuration/template_configuration_schema.json",
   "parameter_evidence": "artifacts/semantic_parameters/evidence.json",
-  "semantic_enrichment": null,
+  "semantic_enrichment": "artifacts/semantic_parameters/enrichment_v2/enrichment.json",
   "template_directory": "configuration_templates",
   "capability_registry": "configuration_templates/capability_registry.yaml",
 
@@ -17,9 +17,11 @@
   "parameter_value_prompt": "prompts/parameter_value_reasoning.txt",
   "ollama_model": "qwen2.5-coder:7b",
   "ollama_host": null,
+  "ollama_context_window": 8192,
+  "parameter_selection_context_window": 16384,
   "environment_file": ".env",
 
-  "context_variant": "graph",
+  "context_variant": "metadata_graph",
   "retrieval_top_k": 12,
   "graph_hops": 1,
 

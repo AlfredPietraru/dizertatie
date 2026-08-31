@@ -18,7 +18,9 @@ from pydantic import Field
 from .schema import AvailableParameter, MissionModel, ParameterCatalogue
 
 
-ContextVariant = Literal["names_values", "semantic", "source", "system", "graph"]
+ContextVariant = Literal[
+    "names_values", "semantic", "source", "system", "graph", "metadata_graph",
+]
 RetrievalOrigin = Literal["exact", "lexical", "graph"]
 
 
@@ -97,9 +99,11 @@ def _search_fields(parameter: AvailableParameter, variant: ContextVariant) -> di
         "component": " ".join(parameter.affected_components) or parameter.component_id or "",
         "value": f"{parameter.current_value} {parameter.value_type}",
     }
-    if variant in {"semantic", "source", "system", "graph"}:
+    if variant in {"semantic", "source", "system", "graph", "metadata_graph"}:
         fields.update({
             "description": parameter.description,
+            "aliases": " ".join(parameter.aliases),
+            "user_expressions": " ".join(parameter.user_expressions),
             "physical_quantity": parameter.physical_quantity or "",
             "unit": parameter.unit or "",
             "semantic_category": parameter.semantic_category or "",
@@ -119,9 +123,13 @@ def _search_fields(parameter: AvailableParameter, variant: ContextVariant) -> di
                      ("role", "effective_name", "interface_type", "controlling_parameter"))
             for item in evidence.get("ros_interfaces", []) if isinstance(item, dict)
         )
-    if variant == "graph":
+    if variant in {"graph", "metadata_graph"}:
         fields["relationships"] = " ".join(
             f"{item.get('kind', '')} {item.get('target', '')}" for item in parameter.relationships
+        )
+        fields["semantic_relationships"] = " ".join(
+            " ".join(str(item.get(key, "")) for key in ("relation", "target_parameter_id", "reason"))
+            for item in parameter.semantic_relationships
         )
     return fields
 
@@ -187,14 +195,21 @@ def retrieve_parameters(
                     continue
                 matched_fields.add(field)
                 inverse_frequency = math.log((total + 1) / (document_frequency[token] + 0.5)) + 1.0
-                field_weight = {"identifier": 3.0, "name": 2.5, "description": 1.8,
-                                "behavioral_effect": 1.6, "source": 1.2}.get(field, 1.0)
+                field_weight = {
+                    "identifier": 3.0,
+                    "name": 2.5,
+                    "aliases": 2.5,
+                    "user_expressions": 2.0,
+                    "description": 1.8,
+                    "behavioral_effect": 1.6,
+                    "source": 1.2,
+                }.get(field, 1.0)
                 score += inverse_frequency * field_weight * (1.0 + math.log(count))
         short_name = identifier.rsplit(".", 1)[-1]
-        exact = (
-            _normalize_text(identifier) in normalized_query
-            or _normalize_text(short_name) in normalized_query
-            or _normalize_text(parameter.semantic_name) in normalized_query
+        exact_terms = [identifier, short_name, parameter.semantic_name, *parameter.aliases]
+        exact = any(
+            normalized and normalized in normalized_query
+            for normalized in (_normalize_text(term) for term in exact_terms)
         )
         if exact:
             score += 100.0
@@ -210,7 +225,7 @@ def retrieve_parameters(
                            evidence_ids=_evidence_ids(by_id[identifier]))
         for index, (score, identifier, matched, origin) in enumerate(selected, 1)
     ]
-    if variant == "graph" and graph_hops and candidates:
+    if variant in {"graph", "metadata_graph"} and graph_hops and candidates:
         adjacency = _graph(catalogue, wiring_bindings)
         known = {item.parameter_id for item in candidates}
         queue = deque((item.parameter_id, 0, item.parameter_id) for item in candidates)
@@ -252,9 +267,11 @@ def _context_record(parameter: AvailableParameter, variant: ContextVariant) -> d
         "maximum": parameter.maximum,
         "allowed_values": parameter.allowed_values,
     }
-    if variant in {"semantic", "source", "system", "graph"}:
+    if variant in {"semantic", "source", "system", "graph", "metadata_graph"}:
         record.update({
             "description": parameter.description,
+            "aliases": parameter.aliases,
+            "user_expressions": parameter.user_expressions,
             "physical_quantity": parameter.physical_quantity,
             "unit": parameter.unit,
             "semantic_category": parameter.semantic_category,
@@ -270,8 +287,9 @@ def _context_record(parameter: AvailableParameter, variant: ContextVariant) -> d
         }
     if variant in {"system", "graph"}:
         record["ros_interfaces"] = evidence.get("ros_interfaces", [])
-    if variant == "graph":
+    if variant in {"graph", "metadata_graph"}:
         record["relationships"] = parameter.relationships
+        record["semantic_relationships"] = parameter.semantic_relationships
     return record
 
 
@@ -301,7 +319,7 @@ def build_selection_context(
             serialized = json.dumps(record, sort_keys=True, default=str)
         records.append(record)
         used += len(serialized)
-        if retrieval.variant == "graph":
+        if retrieval.variant in {"graph", "metadata_graph"}:
             for relationship in parameter.relationships:
                 if isinstance(relationship.get("target"), str):
                     graph_edges.append({"source": parameter.parameter_id,

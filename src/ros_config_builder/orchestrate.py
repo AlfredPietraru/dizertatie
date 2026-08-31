@@ -19,6 +19,7 @@ if __package__ in {None, ""}:
 from ros_config_builder.mission import (
     AntRobotCapabilityRegistry, MissionInterpretation, MissionInterpreter, OllamaBackend,
     build_interpretation_prompt, build_template_configuration_plan, derive_parameter_catalogue,
+    build_parameter_system_context,
     ParameterReasoner, ParameterSelectionInterpretation, ParameterValueInterpretation,
     build_parameter_evidence, enrichment_by_parameter_id, evidence_by_parameter_id,
     load_capability_registry, load_parameter_evidence_artifact,
@@ -62,9 +63,13 @@ class ApplicationConfiguration(BaseModel):
     parameter_value_prompt: Path = Path("prompts/parameter_value_reasoning.txt")
     ollama_model: str = "qwen2.5-coder:7b"
     ollama_host: str | None = None
+    ollama_context_window: int = Field(default=8192, ge=1024)
+    parameter_selection_context_window: int = Field(default=16384, ge=1024)
     environment_file: Path = Path(".env")
 
-    context_variant: Literal["names_values", "semantic", "source", "system", "graph"] = "graph"
+    context_variant: Literal[
+        "names_values", "semantic", "source", "system", "graph", "metadata_graph",
+    ] = "graph"
     retrieval_top_k: int = Field(default=12, ge=1)
     graph_hops: int = Field(default=1, ge=0)
 
@@ -288,10 +293,7 @@ class MissionApplication:
         result["parameter_catalogue"] = catalogue.model_dump(mode="json")
         reasoning = self.parameter_reasoner.reason(
             mission, catalogue,
-            system_context={
-                "system_realization": realization.model_dump(mode="json"),
-                "ros_orchestration": orchestration.model_dump(mode="json"),
-            },
+            system_context=build_parameter_system_context(realization, orchestration),
             wiring_bindings=self.manifest.get("wiring_bindings", {}),
         )
         result["parameter_retrieval"] = reasoning.retrieval.model_dump(mode="json")
@@ -349,16 +351,19 @@ def build_mission_application(configuration: ApplicationConfiguration) -> Missio
         host=configuration.ollama_host,
         model=configuration.ollama_model,
         response_model=MissionInterpretation,
+        context_window=configuration.ollama_context_window,
     )
     selection_backend = OllamaBackend(
         host=configuration.ollama_host,
         model=configuration.ollama_model,
         response_model=ParameterSelectionInterpretation,
+        context_window=configuration.parameter_selection_context_window,
     )
     value_backend = OllamaBackend(
         host=configuration.ollama_host,
         model=configuration.ollama_model,
         response_model=ParameterValueInterpretation,
+        context_window=configuration.ollama_context_window,
     )
     reasoner = ParameterReasoner(
         selection_backend, value_backend,

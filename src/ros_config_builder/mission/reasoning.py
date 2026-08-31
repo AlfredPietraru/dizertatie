@@ -13,6 +13,7 @@ from .retrieval import (
 )
 from .schema import (
     MissionModel, ParameterCatalogue, ParameterChange, RendererValue,
+    ROSOrchestrationPlan, SystemRealization,
     validate_parameter_changes,
 )
 
@@ -128,6 +129,29 @@ def build_parameter_selection_prompt(
         SYSTEM_CONTEXT_PLACEHOLDER: system_context or {},
         SELECTION_SCHEMA_PLACEHOLDER: ParameterSelectionInterpretation.model_json_schema(),
     })
+
+
+def build_parameter_system_context(
+    realization: SystemRealization,
+    orchestration: ROSOrchestrationPlan,
+) -> dict[str, Any]:
+    """Summarize the decided capability state without flooding the selection prompt."""
+    return {
+        "capabilities": [{
+            "capability": item.capability,
+            "implementation": item.implementation,
+            "enabled": item.enabled,
+            "user_mentioned": item.user_mentioned,
+        } for item in realization.capabilities],
+        "active_components": sorted(realization.active_component_ids),
+        "renderer_values": realization.renderer_values,
+        "orchestration_status": orchestration.status,
+        "wiring_bindings": [{
+            "semantic_role": item.semantic_role,
+            "effective_value": item.effective_value,
+            "active_targets": item.active_targets,
+        } for item in orchestration.wiring_bindings],
+    }
 
 
 def build_parameter_value_prompt(

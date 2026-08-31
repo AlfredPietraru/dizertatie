@@ -5,6 +5,7 @@ from .reasoning import (
     ParameterReasoner, ParameterReasoningResult, ParameterSelectionInterpretation,
     ParameterValueInterpretation, ProposedParameterChange, SelectedParameter,
     build_parameter_selection_prompt, build_parameter_value_prompt,
+    build_parameter_system_context,
     validate_parameter_selection, validate_parameter_values,
 )
 from .retrieval import (

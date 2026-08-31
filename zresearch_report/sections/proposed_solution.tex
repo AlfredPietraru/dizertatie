@@ -49,21 +49,24 @@ When one wildcard YAML value affects multiple components, the representation con
 The integrated model and the physical configuration representation are saved as frozen artifacts. Here, frozen means that they are treated as immutable inputs for a run or experiment. It does not refer to a ROS runtime feature. When source code, launch structure, parameter files, or extraction logic changes, the dependent artifacts must be regenerated in order.
 This frozen boundary makes the language-model experiment reproducible. The same identifiers, values, relationships, and evidence can be supplied across repeated runs and context ablations.
 
-\section{Deterministic Parameter Metadata and Evidence}
-Metadata is constructed for every writable physical configuration slot discovered in the analyzed deployment. In the current method, this metadata is produced entirely by deterministic repository analysis. Each field must be traceable to Python source, launch structure, a ROS parameter file, package metadata, or a relationship derived by integrating those sources.
+\section{Parameter Metadata and Evidence from Deterministic and Language-Model Analysis}
+Metadata is constructed for every writable physical configuration slot discovered in the analyzed deployment. The resulting record combines two explicitly distinguished provenance classes. Deterministic repository analysis supplies configuration facts and evidence that can be traced to Python source, launch structure, ROS parameter files, package metadata, or relationships derived by integrating those sources. An optional offline language-model enrichment stage interprets that bounded evidence and adds semantic hypotheses intended to improve lexical retrieval and later parameter reasoning. These hypotheses do not replace or modify the deterministic facts.
 The construction starts from effective parameter occurrences in the unified system model. Occurrences controlled by the same physical location are grouped into one configuration record. A ROS parameter assigned through YAML is identified by its file, node selector, and nested parameter path. A launch argument is identified by its root launch interface. This projection is necessary because one YAML wildcard may affect several deployed components, whereas configuration application must still modify that value only once.
-For each resulting record, the extractor assigns a stable canonical identifier and retains the source name, configuration kind, value type, declared default, current effective value, known allowed values or numerical bounds, ordered provenance, writable target, affected components, and deterministically discovered relationships. It also creates a bounded evidence package containing source references and short excerpts for declarations, reads, and usages, together with related ROS interfaces when those interfaces can be established from the repository. Unavailable facts remain absent or explicitly unresolved; they are not inferred from the parameter name.
+For each resulting record, the deterministic extractor assigns a stable canonical identifier and retains the source name, configuration kind, value type, declared default, current effective value, known allowed values or numerical bounds, ordered provenance, writable target, affected components, and deterministically discovered relationships. It also creates a bounded evidence package containing source references and short excerpts for declarations, reads, and usages, together with related ROS interfaces when those interfaces can be established from the repository. Unavailable deterministic facts remain absent or explicitly unresolved; they are not inferred from the parameter name.
 
-Table~\ref{tab:deterministic-parameter-metadata} illustrates the resulting metadata for one parameter. The example shows why both provenance and a writable target are required: the node declares a default of \(10.0\), but the deployed YAML assignment overrides it with \(20.0\). Consequently, \(20.0\) is the current effective value and the YAML slot is the location that configuration generation must modify.
+The semantic-enrichment model receives these bounded evidence documents in offline batches. For each parameter document it may produce a concise description, aliases, example user expressions, physical quantity, unit, semantic category, behavioral effects, constraints, typed relationships to other known parameters, and a confidence value. Every enrichment is stored separately from the source-derived evidence and is labelled as a model-generated hypothesis. Schema validation prevents it from inventing parameter identifiers or relationship targets, and evidence citations are restricted to identifiers present in the supplied document. The enrichment artifact is hash-bound to the system model and configuration schema, so stale metadata is rejected at application start-up. Once a validated enrichment artifact is frozen for an experiment, retrieval over the combined records is reproducible even though the offline process that originally generated the semantic hypotheses used a language model.
+
+Table~\ref{tab:deterministic-parameter-metadata} illustrates the combined record for one parameter and identifies the origin of each group of fields. The deterministic part shows why both provenance and a writable target are required: the node declares a default of \(10.0\), but the deployed YAML assignment overrides it with \(20.0\). Consequently, \(20.0\) is the current effective value and the YAML slot is the location that configuration generation must modify. The language-model part adds searchable ways of expressing the same parameter semantically, while remaining subordinate to the source-derived identity, value, target, and evidence.
 
 \begin{table}[htbp]
 \centering
-\caption{Example of deterministically extracted metadata for a ROS parameter.}
+\caption{Example of combined deterministic and language-model-generated metadata for a ROS parameter.}
 \label{tab:deterministic-parameter-metadata}
 \begin{tabular}{p{0.27\textwidth} p{0.66\textwidth}}
 \hline
 \textbf{Metadata field} & \textbf{Extracted value} \\
 \hline
+\multicolumn{2}{l}{\textit{Deterministically extracted facts and evidence}} \\
 Canonical identifier & \texttt{nodes.joint\_state\_estimator.publish\_frequency} \\
 Source parameter name & \texttt{publish\_frequency} \\
 Configuration kind & ROS parameter \\
@@ -77,10 +80,25 @@ Usage evidence & The parameter is read by the component and used to derive its p
 Source evidence & Stable references to the declaration, read, usage, and YAML assignment locations \\
 Known constraints & Numerical type; no additional bound is recorded unless one is present in the analyzed sources \\
 \hline
+\multicolumn{2}{l}{\textit{Language-model-generated semantic metadata}} \\
+Semantic description & The frequency at which joint-state information is published \\
+Aliases & ``publish rate''; ``update frequency'' \\
+Example user expressions & ``joint state update rate''; ``how often joint states are published'' \\
+Physical quantity & Frequency \\
+Unit & Hz \\
+Semantic category & System configuration \\
+Behavioral effects & Joint-state updates; odometry calculations \\
+Semantic constraints & None inferred for this record \\
+Typed semantic relationships & None inferred for this record \\
+Semantic confidence & \(1.0\), reported by the enrichment model \\
+Semantic grounding & No evidence identifiers cited in this enrichment record; the semantic fields therefore remain uncited model hypotheses \\
+\hline
 \end{tabular}
 \end{table}
 
-The metadata table is representative of the record structure, not a manually authored annotation. The same extraction procedure is applied to all discovered ROS parameter slots and root launch arguments. Hardware dimensions, algorithm settings, topic and frame names, timing values, and activation arguments are therefore represented uniformly, while retaining their different physical targets and source evidence. These records form the complete parameter catalogue used by the later reasoning pipeline. Deterministic retrieval searches fields that actually exist in the catalogue, such as identifiers, source names, component names, current values, source evidence, ROS interfaces, and extracted relationships. The resulting bounded candidate records are therefore grounded entirely in repository facts.
+The metadata table is representative of the combined record structure, not a manually authored annotation. Deterministic extraction is applied to all discovered ROS parameter slots and root launch arguments; optional semantic enrichment is generated for each corresponding evidence document. Hardware dimensions, algorithm settings, topic and frame names, timing values, and activation arguments are therefore represented uniformly while retaining the provenance of every field. These records form the complete parameter catalogue used by the later reasoning pipeline.
+
+Deterministic retrieval can search both provenance classes, depending on the configured context variant. Identifiers, source names, component names, current values, source evidence, ROS interfaces, and extracted relationships originate from repository analysis. Descriptions, aliases, user expressions, physical quantities, units, semantic categories, behavioral effects, constraints, and semantic relationships may originate from the frozen language-model enrichment. Thus, the retrieval operation and ranking are deterministic for fixed inputs, but the searchable catalogue is not claimed to consist exclusively of deterministic facts. Keeping the two origins explicit makes it possible to evaluate whether model-generated semantic metadata improves retrieval and to audit failures caused by an incorrect enrichment hypothesis.
 
 \section{Natural-Language Configuration Reasoning}
 Natural-language configuration reasoning uses at most three sequential language-model calls, with deterministic processing and validation between them. The calls have separate responsibilities:

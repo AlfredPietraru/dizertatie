@@ -213,9 +213,12 @@ class MissionApplicationTests(unittest.TestCase):
             "launch.launch_laserscan_to_pointcloud": True,
             "nodes.kiss_icp.max_range": 20.0,
         })
-        self.assertIn("nodes.kiss_icp.max_range", {
+        catalogue_ids = {
             item["parameter_id"] for item in result["parameter_catalogue"]["parameters"]
-        })
+        }
+        self.assertIn("nodes.kiss_icp.max_range", catalogue_ids)
+        self.assertNotIn("nodes.kinematic_icp.max_range", catalogue_ids)
+        self.assertFalse(any(identifier.startswith("launch.") for identifier in catalogue_ids))
         self.assertEqual(result["parameter_selection"]["status"], "valid")
         self.assertEqual(result["parameter_value_interpretation"]["status"], "valid")
         self.assertEqual(len(calls), 1)

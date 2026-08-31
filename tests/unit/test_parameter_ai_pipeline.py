@@ -7,7 +7,8 @@ from pathlib import Path
 
 from ros_config_builder import (
     CapabilitySelections, ParameterReasoner, SemanticEnricher,
-    build_parameter_evidence, build_system_model, build_template_configuration_schema,
+    build_parameter_evidence, build_selection_context, build_system_model,
+    build_template_configuration_schema,
     derive_parameter_catalogue, enrichment_by_parameter_id, evaluate_parameter_reasoning,
     evidence_by_parameter_id, extract_launch_files, extract_package_metadata,
     extract_parameter_yaml, extract_ros_node_ir, load_capability_registry,
@@ -33,12 +34,18 @@ class ParameterAIPipelineTests(unittest.TestCase):
         cls.manifest = json.loads(Path("configuration_templates/manifest.json").read_text())
         registry = load_capability_registry("configuration_templates/capability_registry.yaml")
         realization = realize_capabilities(CapabilitySelections(), registry)
+        cls.realization = realization
         orchestration = resolve_ros_orchestration(
             realization, registry, cls.model, cls.manifest,
         )
         cls.catalogue = derive_parameter_catalogue(
             realization, cls.schema,
             evidence_by_id=evidence_by_parameter_id(cls.evidence),
+        )
+        cls.full_catalogue = derive_parameter_catalogue(
+            realization, cls.schema,
+            evidence_by_id=evidence_by_parameter_id(cls.evidence),
+            include_inactive_components=True,
         )
 
     def _wheel_reasoner(self, *, introduce_unselected: bool = False) -> ParameterReasoner:
@@ -81,6 +88,33 @@ class ParameterAIPipelineTests(unittest.TestCase):
         shared = next(item for item in self.evidence
                       if item.parameter_id == "nodes.explore.publish_rate")
         self.assertEqual(shared.affected_components, ["explore", "explore_lite_map_converter"])
+
+    def test_aliases_and_user_expressions_are_searchable_selection_metadata(self) -> None:
+        parameter_id = "nodes.rdrive_node.wheel_radius"
+        catalogue = derive_parameter_catalogue(
+            self.realization,
+            self.schema,
+            semantic_enrichments={parameter_id: {
+                "description": "Radius of each drive wheel.",
+                "aliases": ["rolling circle"],
+                "user_expressions": ["fit moon tyres"],
+            }},
+        )
+        parameter = next(
+            item for item in catalogue.parameters if item.parameter_id == parameter_id
+        )
+        self.assertEqual(parameter.aliases, ["rolling circle"])
+        self.assertEqual(parameter.user_expressions, ["fit moon tyres"])
+
+        retrieval = retrieve_parameters(
+            "fit moon tyres", catalogue, variant="semantic", top_k=1,
+            graph_hops=0,
+        )
+        self.assertEqual(retrieval.candidates[0].parameter_id, parameter_id)
+        self.assertIn("user_expressions", retrieval.candidates[0].matched_fields)
+        context = build_selection_context(retrieval, catalogue)
+        self.assertEqual(context.records[0]["aliases"], ["rolling circle"])
+        self.assertEqual(context.records[0]["user_expressions"], ["fit moon tyres"])
 
     def test_semantic_enrichment_requires_real_evidence_ids(self) -> None:
         wheel = next(item for item in self.evidence
@@ -177,7 +211,7 @@ class ParameterAIPipelineTests(unittest.TestCase):
 
     def test_parameter_task_dataset_has_valid_gold_ids_and_types(self) -> None:
         tasks = load_parameter_reasoning_tasks(
-            "data/parameter_reasoning_tasks_v1.jsonl", self.catalogue,
+            "data/parameter_reasoning_tasks_v1.jsonl", self.full_catalogue,
         )
         self.assertEqual(len(tasks), 40)
         self.assertEqual(sum(task.outcome == "supported" for task in tasks), 32)

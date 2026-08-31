@@ -57,12 +57,16 @@ class OllamaBackend:
     """Small standard-library client for Ollama's local chat endpoint."""
 
     def __init__(self, *, host: str | None = None, model: str | None = None, timeout: float = 300,
-                 response_model: type[BaseModel] = MissionInterpretation) -> None:
+                 response_model: type[BaseModel] = MissionInterpretation,
+                 context_window: int = 8192) -> None:
         raw_host = host or os.getenv("OLLAMA_HOST_PATH") or "127.0.0.1"
         self.host = raw_host.removeprefix("http://").removeprefix("https://").rstrip("/")
         self.model = model or os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
         self.timeout = timeout
         self.response_model = response_model
+        if context_window < 1024:
+            raise ValueError("Ollama context window must be at least 1024 tokens")
+        self.context_window = context_window
 
     def __call__(self, system_prompt: str, user_prompt: str) -> str:
         payload = json.dumps({
@@ -76,7 +80,7 @@ class OllamaBackend:
             # Some evidence-rich single-parameter prompts exceed Ollama's
             # default 4K runtime context.  Keep enough room for the largest
             # frozen evidence entry and its structured response.
-            "options": {"temperature": 0, "num_ctx": 8192},
+            "options": {"temperature": 0, "num_ctx": self.context_window},
         }).encode("utf-8")
         request = urllib.request.Request(
             f"http://{self.host}:11434/api/chat", data=payload,

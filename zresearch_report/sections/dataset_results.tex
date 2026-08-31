@@ -10,8 +10,8 @@ The dataset was constructed in the direction from a verified structured intent t
 The construction process consisted of the following stages:
 
 \begin{enumerate}
-    \item Fifteen seed missions were defined from capabilities and parameters that exist in the extracted AntRobot system model. Each seed contains a canonical intent, a sparse capability annotation, any explicitly requested parameter values, and descriptive strata.
-    \item For each seed, the local \texttt{qwen2.5-coder:7b} model generated ten paraphrases. The requested styles included canonical language, natural language, shorthand, imperative phrasing, negative phrasing, and multi-clause requests.
+    \item Fifteen seed missions were defined from capabilities and parameters that exist in the extracted AntRobot system model. Each seed contains a canonical intent, a sparse capability annotation, any explicitly requested parameter values, and category labels used for grouped evaluation.
+    \item For each seed, the local \texttt{qwen2.5-coder:7b} model generated ten paraphrases. The requested styles included canonical language, natural language, shorthand+, imperative phrasing, negative phrasing, and multi-clause requests.
     \item Automatic checks rejected malformed records, duplicate texts after normalization, and records that violated the candidate schema.
     \item A semantic review checked that each paraphrase preserved the seed intent and did not add or remove requirements. Rejected variants were regenerated or replaced. The generation history and rejected texts were retained rather than overwritten.
     \item Fourteen records required a manual language repair after semantic review. The final dataset therefore contains 136 model-generated paraphrases and 14 repaired paraphrases.

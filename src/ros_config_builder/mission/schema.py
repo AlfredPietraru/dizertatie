@@ -443,6 +443,8 @@ class AvailableParameter(MissionModel):
     kind: Literal["ros_parameter", "launch_argument"] = "ros_parameter"
     semantic_name: str
     description: str
+    aliases: list[str] = Field(default_factory=list)
+    user_expressions: list[str] = Field(default_factory=list)
     value_type: Literal["boolean", "integer", "number", "string", "array", "object", "unknown"]
     current_value: RendererValue
     minimum: float | None = None
@@ -454,6 +456,7 @@ class AvailableParameter(MissionModel):
     behavioral_effect: str | None = None
     constraints: list[str] = Field(default_factory=list)
     relationships: list[dict[str, str]] = Field(default_factory=list)
+    semantic_relationships: list[dict[str, Any]] = Field(default_factory=list)
     evidence: dict[str, Any] | None = None
     semantic_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -843,12 +846,17 @@ def derive_parameter_catalogue(
     *,
     evidence_by_id: dict[str, dict[str, Any]] | None = None,
     semantic_enrichments: dict[str, dict[str, Any]] | None = None,
+    include_inactive_components: bool = False,
+    include_launch_arguments: bool = False,
 ) -> ParameterCatalogue:
-    """Expose every extracted ROS parameter and launch argument to semantic reasoning."""
+    """Expose only parameters eligible under the decided capability realization."""
     evidence_by_id = evidence_by_id or {}
     semantic_enrichments = semantic_enrichments or {}
+    active_components = realization.active_component_ids
     parameters: list[AvailableParameter] = []
-    launch_items = template_schema.get("launch_arguments", [])
+    launch_items = (
+        template_schema.get("launch_arguments", []) if include_launch_arguments else []
+    )
     for item in launch_items:
         semantics = item.get("semantic_information") or {}
         value_range = item.get("range") or {}
@@ -859,6 +867,8 @@ def derive_parameter_catalogue(
             affected_components=list(item.get("affected_components", [])),
             semantic_name=f"launch {name}",
             description=enrichment.get("description") or semantics.get("description") or f"Launch argument {name}.",
+            aliases=list(enrichment.get("aliases") or []),
+            user_expressions=list(enrichment.get("user_expressions") or []),
             value_type=item["value_type"], current_value=item["current_value"],
             minimum=value_range.get("minimum"), maximum=value_range.get("maximum"),
             allowed_values=item.get("allowed_values"),
@@ -871,11 +881,15 @@ def derive_parameter_catalogue(
             relationships=_merge_parameter_relationships(
                 item.get("relationships", []), enrichment.get("related_parameters", []),
             ),
+            semantic_relationships=list(enrichment.get("relationships") or []),
             evidence=evidence_by_id.get(item["template_key"]),
             semantic_confidence=enrichment.get("confidence"),
         ))
     for component_id, items in sorted(template_schema.get("node_parameters", {}).items()):
         for item in items:
+            affected_components = set(item.get("affected_components") or [component_id])
+            if not include_inactive_components and not affected_components & active_components:
+                continue
             semantics = item.get("semantic_information") or {}
             value_range = item.get("range") or {}
             name = item["name"].replace("_", " ")
@@ -883,10 +897,12 @@ def derive_parameter_catalogue(
             enrichment = semantic_enrichments.get(item["template_key"], {})
             parameters.append(AvailableParameter(
                 parameter_id=item["template_key"], component_id=component_id,
-                affected_components=list(item.get("affected_components") or [component_id]),
+                affected_components=sorted(affected_components),
                 semantic_name=f"{component_name} {name}",
                 description=(enrichment.get("description") or semantics.get("description")
                              or f"Configure {name} for {component_name}."),
+                aliases=list(enrichment.get("aliases") or []),
+                user_expressions=list(enrichment.get("user_expressions") or []),
                 value_type=item["value_type"], current_value=item["current_value"],
                 minimum=value_range.get("minimum"), maximum=value_range.get("maximum"),
                 allowed_values=item.get("allowed_values"),
@@ -899,16 +915,27 @@ def derive_parameter_catalogue(
                 relationships=_merge_parameter_relationships(
                     item.get("relationships", []), enrichment.get("related_parameters", []),
                 ),
+                semantic_relationships=list(enrichment.get("relationships") or []),
                 evidence=evidence_by_id.get(item["template_key"]),
                 semantic_confidence=enrichment.get("confidence"),
             ))
+    eligible_ids = {item.parameter_id for item in parameters}
+    for parameter in parameters:
+        parameter.relationships = [
+            relationship for relationship in parameter.relationships
+            if relationship.get("target") in eligible_ids
+        ]
+        parameter.semantic_relationships = [
+            relationship for relationship in parameter.semantic_relationships
+            if relationship.get("target_parameter_id") in eligible_ids
+        ]
     by_name: dict[str, list[str]] = {}
     for parameter in parameters:
         short_name = parameter.parameter_id.rsplit(".", 1)[-1]
         by_name.setdefault(short_name, []).append(parameter.parameter_id)
     collisions = {name: ids for name, ids in by_name.items() if len(ids) > 1}
     return ParameterCatalogue(
-        active_components=sorted(realization.active_component_ids),
+        active_components=sorted(active_components),
         parameters=parameters, collisions=collisions,
     )
 

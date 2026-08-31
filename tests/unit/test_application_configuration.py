@@ -21,7 +21,9 @@ class ApplicationConfigurationTests(unittest.TestCase):
         configuration = load_application_configuration()
         self.assertEqual(configuration.operation, "mission")
         self.assertEqual(configuration.workspace, Path.cwd().resolve())
-        self.assertEqual(configuration.context_variant, "graph")
+        self.assertEqual(configuration.context_variant, "metadata_graph")
+        self.assertEqual(configuration.ollama_context_window, 8192)
+        self.assertEqual(configuration.parameter_selection_context_window, 16384)
 
     def test_unknown_and_invalid_settings_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

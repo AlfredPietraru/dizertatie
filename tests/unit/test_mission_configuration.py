@@ -159,7 +159,7 @@ class MissionInterpretationTests(unittest.TestCase):
         result = interpreter.interpret("Use KISS-ICP")
         self.assertEqual(result.capabilities.odometry.implementation, "kiss_icp")
 
-    def test_realization_provenance_and_full_parameter_catalogue_are_independent(self) -> None:
+    def test_parameter_catalogue_follows_the_realized_active_components(self) -> None:
         mission = CapabilitySelections.model_validate({"odometry": {
             "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
         }})
@@ -178,8 +178,9 @@ class MissionInterpretationTests(unittest.TestCase):
         identifiers = {item.parameter_id for item in visible.parameters}
         self.assertIn("nodes.kiss_icp.max_range", identifiers)
         self.assertIn("nodes.joint_state_estimator.publish_frequency", identifiers)
-        self.assertIn("nodes.kinematic_icp.max_range", identifiers)
+        self.assertNotIn("nodes.kinematic_icp.max_range", identifiers)
         self.assertIn("nodes.rdrive_node.wheel_radius", identifiers)
+        self.assertFalse(any(identifier.startswith("launch.") for identifier in identifiers))
 
         parameters = {item.parameter_id: item for item in visible.parameters}
         wheel_radius_relationships = parameters[
@@ -190,7 +191,7 @@ class MissionInterpretationTests(unittest.TestCase):
             "target": "nodes.joint_state_estimator.wheel_radius",
         }, wheel_radius_relationships)
 
-    def test_parameter_changes_are_validated_against_full_catalogue(self) -> None:
+    def test_parameter_changes_are_validated_against_the_active_catalogue(self) -> None:
         mission = CapabilitySelections.model_validate({"odometry": {
             "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
         }})
@@ -210,9 +211,8 @@ class MissionInterpretationTests(unittest.TestCase):
         inactive_component_change = [ParameterChange.model_validate({
             "parameter_id": "nodes.kinematic_icp.max_range", "value": 20.0,
         })]
-        self.assertEqual(validate_parameter_changes(inactive_component_change, catalogue), {
-            "nodes.kinematic_icp.max_range": 20.0,
-        })
+        with self.assertRaisesRegex(ValueError, "not available"):
+            validate_parameter_changes(inactive_component_change, catalogue)
 
     def test_required_ros_connections_are_projected_with_partial_external_status(self) -> None:
         capabilities = CapabilitySelections.model_validate({"odometry": {
