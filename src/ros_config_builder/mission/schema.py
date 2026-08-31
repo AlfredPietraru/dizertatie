@@ -65,8 +65,20 @@ class CapabilitySelections(MissionModel):
 class MissionInterpretation(MissionModel):
     """Outcome-aware capability interpretation boundary."""
 
-    status: Literal["valid", "unsupported", "needs_clarification"]
-    capabilities: CapabilitySelections | None = None
+    status: Literal["valid", "unsupported", "needs_clarification"] = Field(
+        description=(
+            "Capability-stage outcome. Parameter-only requests are valid; unsupported is "
+            "reserved for an explicitly requested capability or implementation absent from "
+            "the capability registry."
+        ),
+    )
+    capabilities: CapabilitySelections | None = Field(
+        default=None,
+        description=(
+            "Sparse high-level capability changes. Use an empty object for a valid "
+            "parameter-only request that does not change capabilities."
+        ),
+    )
     reason: str | None = None
     clarification_question: str | None = None
 

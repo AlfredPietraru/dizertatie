@@ -21,9 +21,18 @@ Sparse-selection rules:
 - Explicitly disabled capability: enabled=false, implementation=null, selection_basis=null.
 - Selected implementation: enabled=true, set implementation, and set selection_basis.
 - Preserve every explicit capability enable, disable, and implementation selection.
-- Ignore parameter-tuning phrases during this call. They are handled later by deterministic
-  retrieval, a bounded-context parameter-selection call, and a separate value-reasoning call.
-  A supported tuning phrase does not make the capability interpretation unsupported.
+- A request that only tunes, queries, or preserves parameters is VALID even when it does not
+  request a high-level capability change. Return status="valid" and capabilities={} so the
+  deterministic baseline realization and parameter-reasoning stages can process it.
+- Ignore parameter-tuning phrases while deciding capability support. They are handled later by
+  deterministic retrieval, a bounded-context parameter-selection call, and a separate
+  value-reasoning call. Never use status="unsupported" merely because a parameter name or
+  tuning operation is absent from the capability catalogue.
+- When a parameter-tuning request explicitly names a supported implementation such as KISS-ICP
+  or kinematic ICP, select that implementation and leave the tuning operation for later stages.
+- The capability stage has no parameter catalogue and therefore must not decide whether a
+  requested parameter exists. Only an explicitly requested high-level capability or
+  implementation absent from this catalogue can make this stage unsupported.
 
 Use status "unsupported" when the requested capability or implementation is absent from the
 catalogue. Use "needs_clarification" only when ambiguity prevents a safe supported choice;
@@ -43,6 +52,21 @@ Output: {"status":"valid","capabilities":{"odometry":{"enabled":true,"implementa
 
 Mission: Map using KISS-ICP and limit its range to 20 metres.
 Output: {"status":"valid","capabilities":{"mapping":{"enabled":true,"implementation":null,"selection_basis":null},"odometry":{"enabled":true,"implementation":"kiss_icp","selection_basis":"explicit"}}}
+
+Mission: Set the joint-state publishing frequency to 30 Hz.
+Output: {"status":"valid","capabilities":{}}
+
+Mission: The distance between the wheel centres is now 25 centimetres.
+Output: {"status":"valid","capabilities":{}}
+
+Mission: Set KISS-ICP maximum sensor range to 5 metres.
+Output: {"status":"valid","capabilities":{"odometry":{"enabled":true,"implementation":"kiss_icp","selection_basis":"explicit"}}}
+
+Mission: Use a 0.05 metre voxel size for kinematic ICP.
+Output: {"status":"valid","capabilities":{"odometry":{"enabled":true,"implementation":"kinematic_icp","selection_basis":"explicit"}}}
+
+Mission: Set the camera exposure to 5 milliseconds.
+Output: {"status":"valid","capabilities":{}}
 
 Mission: Map using ORB-SLAM.
 Output: {"status":"unsupported","capabilities":null,"reason":"ORB-SLAM is not present in the supported AntRobot capability registry.","clarification_question":null}

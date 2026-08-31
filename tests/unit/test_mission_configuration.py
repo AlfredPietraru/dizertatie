@@ -143,9 +143,25 @@ class MissionInterpretationTests(unittest.TestCase):
         prompt = build_interpretation_prompt(template, self.registry)
         self.assertIn('"kiss_icp"', prompt)
         self.assertIn("point-cloud", prompt)
+        self.assertIn("parameter-tuning request explicitly names", prompt)
+        self.assertIn("Set the joint-state publishing frequency to 30 Hz", prompt)
+        self.assertIn('"status":"valid","capabilities":{}', prompt)
         self.assertNotIn("launch.launch_kiss_icp", prompt)
         self.assertNotIn("{{ANTROBOT_CAPABILITY_REGISTRY}}", prompt)
         self.assertNotIn("{{MISSION_INTERPRETATION_JSON_SCHEMA}}", prompt)
+
+    def test_parameter_only_request_is_a_valid_empty_capability_selection(self) -> None:
+        raw = '{"status":"valid","capabilities":{}}'
+        interpreter = MissionInterpreter(
+            lambda *_: raw, system_prompt="prompt", registry=self.registry,
+        )
+        result = interpreter.interpret("Set the joint-state publishing frequency to 30 Hz.")
+        self.assertEqual(result.status, "valid")
+        self.assertIsNotNone(result.capabilities)
+        self.assertIsNone(result.capabilities.mapping.enabled)
+        self.assertIsNone(result.capabilities.navigation.enabled)
+        self.assertIsNone(result.capabilities.exploration.enabled)
+        self.assertIsNone(result.capabilities.odometry.enabled)
 
     def test_capability_interpreter_validates_and_realizes_model_output(self) -> None:
         raw = json.dumps({

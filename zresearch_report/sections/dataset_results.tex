@@ -1,7 +1,7 @@
 \chapter{Dataset and Experimental Results}
 \label{chap:dataset-results}
 
-This chapter describes the construction of the AntRobot natural-language mission dataset, the evaluation protocol used for the language-model stages, and the first experimental baseline. The purpose of the experiment is to measure the behavior of the language interface before prompt refinement, additional demonstrations, model adaptation, or retrieval ablations. Configuration rendering, generated YAML files, and generated launch files are outside the scope of this experiment; only the outputs of the language-model stages are evaluated.
+This chapter describes the construction of the AntRobot natural-language mission datasets, the evaluation protocol used for the language-model stages, and the progression from the initial prompt baselines to semantic parameter metadata. Configuration rendering, generated YAML files, and generated launch files remain outside the scope of these experiments; only capability interpretation, parameter retrieval, parameter selection, and parameter-value reasoning are evaluated.
 
 \section{Dataset construction}
 
@@ -47,6 +47,34 @@ The dataset covers sparse requests, multi-capability requests, explicit negation
 
 A separate five-case file, \texttt{evaluation\_missions.jsonl}, is retained as a small diagnostic set. It is useful for quickly detecting regressions, but its size is insufficient for standalone statistical conclusions. The 150 generated missions form the main dataset for the baseline reported below.
 
+\subsection{Parameter-reasoning challenge set}
+
+A second file, \texttt{parameter\_reasoning\_tasks\_v1.jsonl}, was introduced to isolate the retrieval, selection, and value boundaries that the first experiments identified as the main bottleneck. It contains 40 cases: 28 requests with concrete parameter changes, four capability-only or preservation requests that should produce \texttt{no\_change}, four ambiguous requests that should request clarification, and four requests for parameters absent from the extracted robot model that should be rejected as unsupported. Table~\ref{tab:parameter-challenge-composition} gives the difficulty distribution.
+
+\begin{table}[H]
+\centering
+\caption{Composition of the parameter-reasoning challenge set.}
+\label{tab:parameter-challenge-composition}
+\begin{tabular}{p{4.0cm}p{8.0cm}r}
+\toprule
+Difficulty & Main behavior & Cases \\
+\midrule
+Explicit & Direct parameter name and target value & 7 \\
+Semantic & Paraphrase, relative value, or period--frequency reasoning & 7 \\
+Physical & Unit conversion and coupled physical parameters & 4 \\
+Behavioral & Desired effect rather than the source parameter name & 6 \\
+Multi-component & Coordinated topic, frame, or covariance changes & 4 \\
+No change & Capability-only, informational, or preservation request & 4 \\
+Ambiguous & Missing target, component, or value & 4 \\
+Unsupported & Requested setting is absent from the robot model & 4 \\
+\midrule
+Total & & 40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All 40 challenge records are currently marked \texttt{pending\_human\_review}. Experiments using this file are consequently reported as development results, not as final benchmark claims. The evaluation command requires an explicit override to run on these pending annotations, preventing accidental presentation of them as human-verified ground truth.
+
 \section{Evaluated language-model pipeline}
 
 The application uses one model in three specialized calls, rather than three independently trained models. All calls in the baseline use \texttt{qwen2.5-coder:7b} with temperature zero, but each call has a distinct system prompt and structured response schema:
@@ -57,7 +85,7 @@ The application uses one model in three specialized calls, rather than three ind
     \item \textbf{Value reasoning} receives the selected parameters and proposes their new values. This call is skipped when the second stage returns \texttt{no\_change}, \texttt{unsupported}, or \texttt{needs\_clarification}.
 \end{enumerate}
 
-Deterministic capability realization and ROS-system reasoning are executed only to construct the same parameter context used by the production orchestrator. The experiment stops after the third language-model boundary. It does not construct a configuration plan, render YAML, assemble launch files, or score rendered artifacts.
+In the current implementation, the first call is followed by deterministic capability realization. The realized active-component set restricts the parameter catalogue before retrieval: node parameters belonging only to inactive components and all launch arguments are excluded, while relationships to excluded parameters are pruned. The second call therefore chooses only among parameters belonging to the capability implementation already selected by the first call. The historical experiments below are labelled when they predate this restriction. Every experiment stops after the third language-model boundary; it does not construct a configuration plan, render YAML, assemble launch files, or score rendered artifacts.
 
 For reproducibility, each prediction stores the exact system prompt, user prompt, raw response, parsed structured object, latency, failure stage, and validation error. The experiment metadata additionally freezes hashes of both datasets, the three prompt templates, capability registry, system model, parameter evidence, configuration schema, and application configuration.
 
@@ -67,7 +95,7 @@ The metrics distinguish partial semantic understanding from an entirely correct 
 
 \subsection{Outcome accuracy}
 
-Outcome accuracy is the proportion of missions assigned the correct terminal status. The possible capability-stage outcomes are \texttt{valid}, \texttt{unsupported}, and \texttt{needs\_clarification}. Since the current benchmark contains only supported missions, this metric measures valid-request acceptance and does not measure unsafe acceptance of unsupported requests.
+Outcome accuracy is the proportion of missions assigned the correct terminal status. The possible capability-stage outcomes are \texttt{valid}, \texttt{unsupported}, and \texttt{needs\_clarification}. Since the 150-mission paraphrase benchmark contains only supported missions, its outcome metric measures valid-request acceptance and does not measure unsafe acceptance of unsupported requests. The separate parameter challenge set adds unsupported and ambiguous outcomes.
 
 \subsection{Capability metrics}
 
@@ -83,6 +111,8 @@ where $P=TP/(TP+FP)$ and $R=TP/(TP+FN)$. Micro aggregation sums true positives, 
 
 Parameter-selection exact match requires the predicted parameter-ID set to equal the expected set. Selecting a graph-adjacent but unnecessary parameter, omitting one occurrence of a shared physical parameter, or inventing an identifier all cause exact-match failure. Micro precision, recall, and $F_1$ provide partial credit per parameter identifier across the dataset.
 
+Retrieval recall at rank $k$ is the fraction of expected parameter identifiers present among the first $k$ ranked candidates. Mean reciprocal rank (MRR) averages the inverse rank of each expected identifier, so an expected parameter at rank one contributes $1$, at rank two contributes $1/2$, and a missed parameter contributes $0$. These metrics are computed before language-model selection and therefore distinguish retrieval failure from selection failure.
+
 \subsection{Parameter-value metrics}
 
 Parameter-value exact match requires the complete expected identifier--value mapping. Numeric values are evaluated after the annotated unit conversion. The value result is downstream of parameter identification: if the correct identifier is not selected, the value model cannot produce a correct value for it. The present end-to-end value metric therefore measures the combined effect of selection and value reasoning. A later oracle-selection experiment should supply the gold parameter IDs to isolate value-reasoning ability.
@@ -91,13 +121,15 @@ Parameter-value exact match requires the complete expected identifier--value map
 
 Joint LLM exact match requires the correct outcome, an exact capability object, an exact parameter set, and exact values for all applicable stages. Validated inference completion measures whether all required calls returned outputs that passed JSON, schema, bounded-context, identifier, and value validation; completion does not imply semantic correctness.
 
+For the parameter challenge set, outcome accuracy measures whether the pipeline returned \texttt{valid}, \texttt{no\_change}, \texttt{needs\_clarification}, or \texttt{unsupported} as annotated. End-to-end accuracy additionally requires exact parameter selection and an exact complete value set. Unsafe execution rate is the fraction of ambiguous and unsupported requests for which the pipeline nevertheless returned \texttt{valid}; lower is better, and $0\%$ is the desired result.
+
 For the generated dataset, paraphrase consistency is the fraction of seed groups for which all ten variants produce the same structured outputs. Group robustness is stricter: all ten variants must be jointly correct. Mean, median, and 95th-percentile latency describe the cost of all model calls reached by a mission.
 
 \section{Initial baseline experiment}
 
 The first experiment ran the fixed production prompts over all 155 available records: five diagnostic cases and 150 generated benchmark cases. No evaluation record was used to train or tune the model. The experiment is therefore zero-shot with respect to the dataset. However, the fixed capability prompt contains hand-written demonstrations, so the run is not strict prompt-level zero-shot; it is more precisely a dataset-zero-shot production-prompt baseline.
 
-The model was \texttt{qwen2.5-coder:7b}, temperature was zero, the parameter context variant was \texttt{graph}, retrieval returned the top 12 lexical candidates, and graph expansion used one hop. Table~\ref{tab:baseline-results} reports the results.
+The model was \texttt{qwen2.5-coder:7b}, temperature was zero, the parameter context variant was \texttt{graph}, retrieval returned the top 12 lexical candidates, and graph expansion used one hop. This run predates both the semantic-enrichment artifact and capability-conditioned catalogue filtering. Table~\ref{tab:baseline-results} reports the results.
 
 \begin{table}[H]
 \centering
@@ -139,7 +171,7 @@ On the generated dataset, 65 of 150 missions completed all applicable validated 
 
 \section{Few-shot prompt experiment}
 
-A second experiment kept the model, temperature, dataset, retrieval settings, graph depth, schemas, and deterministic context construction fixed while replacing the three system prompts with systematic demonstrations. The demonstrations used novel wording and values rather than copying benchmark records. They represented capability-only, parameter-only, and combined capability--parameter requests. In particular, the parameter-selection prompt demonstrated that capability-only missions should return \texttt{no\_change}, that selected identifiers must occur in the bounded context, and that two consumers of one physical wheel property must be selected together. The value prompt demonstrated unit conversion, consistent coupled values, and copying the current value into \texttt{old\_value}.
+A second experiment kept the model, temperature, dataset, retrieval settings, graph depth, schemas, and deterministic context construction fixed while replacing the three system prompts with systematic demonstrations. The demonstrations used novel wording and values rather than copying benchmark records. They represented capability-only, parameter-only, and combined capability--parameter requests. In particular, the parameter-selection prompt demonstrated that capability-only missions should return \texttt{no\_change}, that selected identifiers must occur in the bounded context, and that two consumers of one physical wheel property must be selected together. The value prompt demonstrated unit conversion, consistent coupled values, and copying the current value into \texttt{old\_value}. Like the initial baseline, this run used the older global catalogue without semantic enrichment or active-component filtering.
 
 Table~\ref{tab:few-shot-comparison} compares the two runs on the 150 generated missions. Differences in percentage points are denoted by ``pp''.
 
@@ -167,10 +199,54 @@ Mean latency & 5.64 s & 6.91 s & +1.27 s \\
 \end{tabular}
 \end{table}
 
-The demonstrations substantially improved recognition of supported missions: outcome accuracy increased by 27.3 percentage points. Parameter-selection and value micro $F_1$ each increased by 10.2 points, indicating that more individual identifiers and values were recovered. However, exact parameter selection remained 0.7\%, capability micro $F_1$ decreased by 4.9 points, and no mission achieved joint exact correctness. Validated completion also decreased from 43.3\% to 18.0\%, with 116 parameter-reasoning exceptions and seven capability-interpretation exceptions. Thus, the examples improved partial semantic behavior but also caused the model to attempt more downstream reasoning that failed strict grounding or schema validation. The few-shot intervention is not an overall solution; it identifies the parameter prompt and constrained decoding behavior as the next targets for controlled refinement.
+The demonstrations substantially improved recognition of supported missions: outcome accuracy increased by 27.3 percentage points. Parameter-selection and value micro $F_1$ each increased by 10.2 points, indicating that more individual identifiers and values were recovered. However, exact parameter selection remained 0.7\%, capability micro $F_1$ decreased by 4.9 points, and no mission achieved joint exact correctness. Validated completion also decreased from 43.3\% to 18.0\%, with 116 parameter-reasoning exceptions and seven capability-interpretation exceptions. Thus, the examples improved partial semantic behavior but also caused the model to attempt more downstream reasoning that failed strict grounding or schema validation. The few-shot intervention was not an overall solution; it motivated explicit semantic metadata and a narrower deterministic candidate boundary.
+
+\section{Semantic-metadata parameter experiment}
+
+The next intervention generated semantic metadata for all 109 extracted configuration records using the same \texttt{qwen2.5-coder:7b} model. Metadata generation processed one parameter per request with an 8192-token context, strict schema validation, and an incremental checkpoint. The resulting frozen artifact contains descriptions, aliases, example user expressions, physical quantities, units, categories, behavioral effects, constraints, and typed semantic relationships. Evidence identifiers were deliberately ignored in this run; the added fields are model-generated hypotheses rather than independently cited facts.
+
+The parameter experiment used the \texttt{metadata\_graph} context, the top 12 lexical candidates, one relationship hop, and a 16384-token context for parameter selection. Capability interpretation and value reasoning retained the 8192-token context. The larger window was limited to selection because the compact metadata records must describe several candidates at once. The run evaluated all 40 challenge cases and saved each completed prediction incrementally.
+
+\begin{table}[H]
+\centering
+\caption{Semantic-metadata pilot on the parameter challenge set ($n=40$).}
+\label{tab:semantic-metadata-pilot}
+\begin{tabular}{p{8.2cm}r}
+\toprule
+Metric & Result \\
+\midrule
+Execution errors & 5 of 40 \\
+Retrieval recall at rank 1 & 37.0\% \\
+Retrieval recall at rank 3 & 87.0\% \\
+Retrieval recall at rank 5 & 94.4\% \\
+Mean reciprocal rank & 0.628 \\
+Parameter-selection exact-set accuracy & 75.0\% \\
+Parameter-selection micro precision & 84.6\% \\
+Parameter-selection micro recall & 84.6\% \\
+Parameter-selection micro $F_1$ & 84.6\% \\
+Per-parameter value accuracy & 91.4\% \\
+Complete value-set accuracy & 82.1\% \\
+Outcome accuracy & 72.5\% \\
+End-to-end accuracy & 57.5\% \\
+Unsafe execution rate & 50.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For the 28 cases that required concrete changes, 21 had an exactly correct selected parameter set. Across the 39 expected parameter identifiers, selection recovered 33, giving equal micro precision and recall of 84.6\%. Among values that reached comparison after execution errors, 32 of 35 individual values were correct. The complete-value metric counts an execution error as an incorrect case, giving 23 exact value sets among the 28 change cases. Across all terminal and change cases, 23 of 40 were completely correct end to end.
+
+The main remaining selection failures exposed a structural problem in this pilot. In three cases the model selected corresponding parameters from both KISS-ICP and kinematic ICP even though the request named only one implementation. Other failures added the joint-state publication frequency to a wheel-odometry frequency request, confused wheel radius with wheel separation, or missed one required laser-topic occurrence. Five outputs failed the strict response schema. The system also failed all four ambiguous cases and all four no-change cases; only half of the eight ambiguous or unsupported requests were prevented from returning a valid executable change, producing the 50.0\% unsafe-execution rate.
+
+These figures are a \emph{pre-filter metadata pilot}. Its candidate catalogue still contained all 109 launch and node records, and graph expansion could connect analogous parameters from alternative implementations. The large improvement over the earlier prompt experiments is useful development evidence, but it is not a controlled semantic-metadata ablation because both the dataset and context representation changed, and the challenge annotations still await human review.
+
+\section{Capability-conditioned catalogue revision}
+
+The failure analysis led to a deterministic revision after the pilot was completed. For each mission, the capability call is now realized first and the parameter catalogue is rebuilt from the resulting active components. Launch arguments are excluded from language-model selection because their values are already determined by capability realization. A node parameter remains eligible only when its affected-component set intersects the active-component set, and relationships to ineligible parameters are removed before retrieval and graph expansion.
+
+Structural checks confirm the intended separation: a kinematic-ICP realization produces 50 eligible node parameters, including 25 kinematic-ICP parameters and no KISS-ICP or launch parameters; a KISS-ICP realization produces 47 eligible node parameters, including 19 KISS-ICP parameters and no kinematic-ICP or launch parameters. These are catalogue-integrity checks, not language-model accuracy results. A full 40-case rerun through the revised capability-conditioned pipeline has not yet been completed, so Table~\ref{tab:semantic-metadata-pilot} must not be interpreted as the score of the new filter.
 
 \section{Limitations and next experiments}
 
-The baseline is a single run of one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware. Repeated runs are needed to estimate variance and confidence intervals. The dataset also requires final independent author review, and its current all-supported composition prevents measurement of unsupported-request rejection, clarification recall, or unsafe execution.
+The reported runs use one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware. Repeated runs are needed to estimate variance and confidence intervals. Both the 150-mission paraphrase set and the 40-case parameter challenge set require final independent author review. Although the challenge set introduces unsupported and ambiguous requests, four cases per outcome are insufficient for a stable safety estimate.
 
-The next experiments should therefore: finalize human review; add independently annotated unsupported and ambiguous missions; repeat the baseline; evaluate parameter values with oracle parameter selection; compare context variants while holding the model and prompts fixed; and only then compare revised prompts or alternative models against this frozen baseline.
+The immediate next experiment should rerun the frozen 40-case challenge set with the same model, prompts, metadata artifact, retrieval limit, graph depth, and context windows, changing only the new capability-conditioned catalogue. This produces the controlled comparison needed to test whether removal of inactive implementations fixes the observed over-selection. Subsequent experiments should finalize human review, repeat each condition to estimate variance, evaluate values with oracle parameter selection, isolate metadata through a no-enrichment control, strengthen abstention behavior for no-change and ambiguous requests, and expand the unsupported and ambiguous subsets before comparing alternative models.
