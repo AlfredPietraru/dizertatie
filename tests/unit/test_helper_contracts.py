@@ -71,7 +71,7 @@ class HelperContractTests(unittest.TestCase):
         )
         self.assertEqual(versions["artifact_generator"], "1.0")
         self.assertEqual(versions["parameter_evidence"], "1.0")
-        self.assertEqual(versions["semantic_enrichment"], "1.0")
+        self.assertEqual(versions["semantic_enrichment"], "2.0")
         self.assertEqual(versions["parameter_reasoning_dataset"], "1.0")
 
     def test_evaluation_checkpoint_survives_a_truncated_final_record(self) -> None:

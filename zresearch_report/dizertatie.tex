@@ -129,13 +129,13 @@ COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
 %%
 %%   Campurile de mai jos trebuie modificate de autor. Modificati doar continutul, nu si numele fiecarei definitii
 %%
-\newcommand{\ProjectTitleRO}{Titlul proiectului de diplomă (ex: Șablon proiect de diplomă)}
-\newcommand{\ProjectSubtitleRO}{Subtitlu (ex: versiunea 2018)}
+\newcommand{\ProjectTitleRO}{Infrastructură ROS automatizată}
+\newcommand{\ProjectSubtitleRO}{Orchestrare prin șabloane ghidată de modele lingvistice}
 \newcommand{\ProjectTitleEN}{Automated ROS Infrastructure}
 \newcommand{\ProjectSubtitleEN}{Orchestration via LLM-Driven Templating}
 \newcommand{\Name}{Alfred Andrei Pietraru}
 \newcommand{\Advisor}{Prof. dr. ing. Dan Marius Novischi}
-\newcommand{\Year}{2018}
+\newcommand{\Year}{2026}
 
 % Setări document
 \title{Proiect de diplomă}
@@ -149,7 +149,9 @@ COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
 
 This repetitive configuration effort limits reproducibility, scalability, and experimentation speed in both research and applied robotics. Existing orchestration solutions, including ROScribe and RobotKube, provide partial automation but continue to rely on static configuration schemes that restrict flexibility and reuse.
 
-This work proposes a hybrid ROS orchestration framework that combines dynamic configuration abstraction with language-driven automation. The approach is built on three main components: templated ROS configurations using Jinja2, enabling reusable and parameterized setup files; a Large Language Model (LLM) capable of translating high-level mission descriptions into structured ROS configurations; and a synthetic data bootstrapping strategy that expands a limited set of real mission examples into a larger corpus of mission–configuration pairs.}
+This work proposes a hybrid ROS orchestration framework that combines source-grounded repository analysis, bounded language-model reasoning, and deterministic configuration generation. Static analysis extracts ROS~2 nodes, launch structure, parameters, interfaces, and provenance into a versioned system model. A large language model (LLM) interprets high-level mission descriptions, selects parameters only from retrieved evidence, and proposes typed values. Strict schemas and deterministic checks validate these conclusions before Jinja2 templates materialize launch and YAML artifacts; the model never writes ROS files directly.
+
+The prototype derives 109 writable configuration slots from the AntRobot workspace and was evaluated on 150 generated mission paraphrases grouped around 15 verified intents, together with a five-case diagnostic set. The initial local-model baseline achieved 76.1\% capability micro $F_1$, but only 1.6\% parameter-selection micro $F_1$ and no jointly exact missions. Few-shot prompting improved supported-outcome accuracy and partial parameter recovery, but did not improve exact end-to-end correctness. These results demonstrate both the feasibility of the hybrid architecture and the importance of grounded retrieval, constrained parameter identification, independent human review, and boundary-specific evaluation.}
 
 \begin{document}
 

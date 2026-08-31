@@ -63,19 +63,57 @@ class ParameterEvidenceArtifact(MissionModel):
     parameters: list[ParameterEvidence]
 
 
+class SemanticParameterRelationship(MissionModel):
+    """An LLM hypothesis about how two known parameters are semantically related."""
+
+    target_parameter_id: str
+    relation: Literal[
+        "same_physical_property", "interface_consistency",
+        "behaviorally_related", "semantic_alternative",
+    ]
+    requires_joint_update: bool = False
+    reason: str = Field(min_length=3)
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class SemanticEnrichment(MissionModel):
     """One model-generated semantic hypothesis grounded in ParameterEvidence."""
 
     parameter_id: str
     description: str = Field(min_length=3)
+    aliases: list[str] = Field(default_factory=list)
+    user_expressions: list[str] = Field(default_factory=list)
     physical_quantity: str | None = None
     unit: str | None = None
     semantic_category: str | None = None
     behavioral_effect: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    relationships: list[SemanticParameterRelationship] = Field(default_factory=list)
+    # Retained for compatibility with the v1 catalogue integration. It is derived
+    # from the typed v2 relationships when those are present.
     related_parameters: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_semantic_lists(self) -> "SemanticEnrichment":
+        def normalized_unique(values: list[str], field: str) -> list[str]:
+            cleaned = [" ".join(value.split()) for value in values]
+            if any(len(value) < 2 for value in cleaned):
+                raise ValueError(f"{field} entries must contain at least two characters")
+            keys = [value.casefold() for value in cleaned]
+            if len(keys) != len(set(keys)):
+                raise ValueError(f"{field} contains duplicate normalized entries")
+            return cleaned
+
+        self.aliases = normalized_unique(self.aliases, "aliases")
+        self.user_expressions = normalized_unique(self.user_expressions, "user_expressions")
+        targets = [item.target_parameter_id for item in self.relationships]
+        if len(targets) != len(set(targets)):
+            raise ValueError("semantic relationships contain duplicate targets")
+        self.related_parameters = sorted(set(self.related_parameters) | set(targets))
+        return self
 
 
 class SemanticEnrichmentBatch(MissionModel):
@@ -90,7 +128,7 @@ class SemanticEnrichmentBatch(MissionModel):
 
 
 class SemanticEnrichmentArtifact(MissionModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "2.0"] = "2.0"
     source_model_sha256: str
     configuration_model_sha256: str
     model_identifier: str
@@ -329,9 +367,18 @@ def build_semantic_enrichment_prompt(template: str, evidence: list[ParameterEvid
 class SemanticEnricher:
     """Obtain auditable semantic hypotheses without modifying deterministic facts."""
 
-    def __init__(self, backend: SemanticBackend, *, prompt_template: str) -> None:
+    def __init__(
+        self,
+        backend: SemanticBackend,
+        *,
+        prompt_template: str,
+        validate_evidence_ids: bool = True,
+    ) -> None:
         self.backend = backend
         self.prompt_template = prompt_template
+        self.validate_evidence_ids = validate_evidence_ids
+        self.last_raw_response: str | None = None
+        self.last_raw_responses: list[str] = []
 
     def enrich(
         self,
@@ -339,40 +386,141 @@ class SemanticEnricher:
         *,
         known_parameter_ids: set[str] | None = None,
     ) -> SemanticEnrichmentBatch:
+        batch, _ = self.enrich_with_raw(
+            evidence, known_parameter_ids=known_parameter_ids,
+        )
+        return batch
+
+    def enrich_with_raw(
+        self,
+        evidence: list[ParameterEvidence],
+        *,
+        known_parameter_ids: set[str] | None = None,
+    ) -> tuple[SemanticEnrichmentBatch, str]:
+        """Return validated enrichment together with its auditable raw response."""
         from .inference import extract_json_object
 
         prompt = build_semantic_enrichment_prompt(self.prompt_template, evidence)
-        raw = self.backend(prompt, "Interpret the supplied parameter evidence.")
-        batch = SemanticEnrichmentBatch.model_validate(extract_json_object(raw))
-        requested = {item.parameter_id for item in evidence}
-        returned = {item.parameter_id for item in batch.enrichments}
-        if returned != requested:
-            raise ValueError(
-                f"semantic enrichment IDs differ from the requested batch: "
-                f"missing={sorted(requested - returned)}, unexpected={sorted(returned - requested)}"
+        requested_ids = [item.parameter_id for item in evidence]
+        allowed_evidence_ids = {
+            item.parameter_id: sorted({
+                reference.evidence_id
+                for reference in [*item.declarations, *item.usages, *item.ros_interfaces]
+            })
+            for item in evidence
+        }
+        request = (
+            "Interpret the supplied parameter evidence. Return exactly one enrichment for each "
+            f"of these parameter IDs, using the IDs verbatim: {json.dumps(requested_ids)}. "
+            "In both enrichment and relationship evidence_ids fields, use only IDs listed for "
+            "that parameter in this map; when its list is empty, evidence_ids must be empty: "
+            f"{json.dumps(allowed_evidence_ids, sort_keys=True)}."
+        )
+        evidence_free_ids = [
+            parameter_id for parameter_id, identifiers in allowed_evidence_ids.items()
+            if not identifiers
+        ]
+        if evidence_free_ids:
+            request += (
+                " These parameters have no permitted evidence IDs: "
+                f"{json.dumps(evidence_free_ids)}. For each of them, both the enrichment "
+                "evidence_ids and every relationship evidence_ids MUST be the literal empty "
+                "JSON array []. Do not put a parameter ID in evidence_ids."
             )
+        if not self.validate_evidence_ids:
+            request += (
+                " Evidence citations are disabled for this run. Set the enrichment evidence_ids "
+                "and every relationship evidence_ids to the empty JSON array []."
+            )
+        requested = {item.parameter_id for item in evidence}
         known = known_parameter_ids or requested
-        invalid_relationships = sorted({
-            target for item in batch.enrichments for target in item.related_parameters
-            if target not in known
-        })
-        if invalid_relationships:
-            raise ValueError(f"semantic enrichment references unknown parameters: {invalid_relationships}")
         evidence_ids = {
             item.parameter_id: {
                 reference.evidence_id for reference in [*item.declarations, *item.usages, *item.ros_interfaces]
             }
             for item in evidence
         }
-        invalid_evidence = sorted({
-            evidence_id
-            for item in batch.enrichments
-            for evidence_id in item.evidence_ids
-            if evidence_id not in evidence_ids[item.parameter_id]
-        })
-        if invalid_evidence:
-            raise ValueError(f"semantic enrichment references unknown evidence: {invalid_evidence}")
-        return batch
+        source_links = {item.parameter_id: set(item.related_parameters) for item in evidence}
+
+        def validate(raw_response: str) -> SemanticEnrichmentBatch:
+            batch = SemanticEnrichmentBatch.model_validate(extract_json_object(raw_response))
+            returned = {item.parameter_id for item in batch.enrichments}
+            if returned != requested:
+                raise ValueError(
+                    f"semantic enrichment IDs differ from the requested batch: "
+                    f"missing={sorted(requested - returned)}, "
+                    f"unexpected={sorted(returned - requested)}"
+                )
+            invalid_relationships = sorted({
+                target for item in batch.enrichments for target in item.related_parameters
+                if target not in known
+            })
+            if invalid_relationships:
+                raise ValueError(
+                    f"semantic enrichment references unknown parameters: {invalid_relationships}"
+                )
+            if self.validate_evidence_ids:
+                invalid_evidence = sorted({
+                    evidence_id
+                    for item in batch.enrichments
+                    for evidence_id in [
+                        *item.evidence_ids,
+                        *(identifier for relationship in item.relationships
+                          for identifier in relationship.evidence_ids),
+                    ]
+                    if evidence_id not in evidence_ids[item.parameter_id]
+                })
+                if invalid_evidence:
+                    raise ValueError(
+                        f"semantic enrichment references unknown evidence: {invalid_evidence}"
+                    )
+            else:
+                for item in batch.enrichments:
+                    item.evidence_ids = []
+                    for relationship in item.relationships:
+                        relationship.evidence_ids = []
+            invalid_self_links = sorted({
+                item.parameter_id for item in batch.enrichments
+                for relationship in item.relationships
+                if relationship.target_parameter_id == item.parameter_id
+            })
+            if invalid_self_links:
+                raise ValueError(
+                    f"semantic enrichment contains self relationships: {invalid_self_links}"
+                )
+            unsupported_joint_updates = sorted({
+                f"{item.parameter_id}->{relationship.target_parameter_id}"
+                for item in batch.enrichments for relationship in item.relationships
+                if relationship.requires_joint_update
+                and relationship.target_parameter_id not in source_links[item.parameter_id]
+            })
+            if unsupported_joint_updates:
+                raise ValueError(
+                    "joint-update claims require a source-derived relationship: "
+                    f"{unsupported_joint_updates}"
+                )
+            return batch
+
+        self.last_raw_responses = []
+        validation_error: ValueError | None = None
+        for attempt in range(3):
+            user_request = request
+            if validation_error is not None:
+                user_request = (
+                    f"Correct the previous invalid response. {request} "
+                    f"Strict validation error: {str(validation_error)[:2000]}. "
+                    "Do not use parameter IDs as evidence IDs. Return corrected JSON only."
+                )
+            raw = self.backend(prompt, user_request)
+            self.last_raw_response = raw
+            self.last_raw_responses.append(raw)
+            try:
+                return validate(raw), raw
+            except ValueError as error:
+                validation_error = error
+                if attempt == 2:
+                    raise
+        raise AssertionError("semantic-enrichment retry loop terminated unexpectedly")
 
 
 def enrichment_by_parameter_id(

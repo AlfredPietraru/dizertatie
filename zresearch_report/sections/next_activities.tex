@@ -1,25 +1,19 @@
-\chapter{Next-Semester Activities}
-The first semester of this project focused on establishing the conceptual and architectural foundation of the proposed system through a state-of-the-art analysis and formal system design. This phase included a literature review on ROS orchestration frameworks, YAML automation approaches, container-based deployment strategies, and LLM code synthesis methods. Comparative analysis tables were developed to identify the limitations of existing tools and to position the proposed framework within the broader research landscape.
+\chapter{Remaining Work}
+The current prototype implements repository analysis, system-model construction, capability realization, bounded parameter retrieval, structured language-model inference, deterministic validation, and template-based generation. It also includes a 150-mission paraphrase dataset and two prompt experiments. The remaining work therefore concerns evaluation quality and deployment evidence rather than initial implementation.
 
-A layered system architecture was designed, clearly defining the data flow between mission interpretation, component resolution, configuration synthesis, and launch generation modules. The mission interpretation schema, component database model, and constraint satisfaction strategy for component selection were formally specified. Particular attention was given to separating semantic interpretation from deterministic configuration synthesis in order to ensure structural validity and reproducibility.
 The planned activities are as follows:
 
 \begin{itemize}
-    \item Dvelopment of a reusable Jinja2-based templating engine for parameterized ROS configuration files
-    \item Define a set of 10--15 representative missions derived from AntRobot's operational modes, covering scenarios such as SLAM exploration, localization-only navigation, mapping with LiDAR, RGB-D-based mapping, and navigation with obstacle avoidance.
-    
-    \item Generate paraphrased mission descriptions using instruction-tuned models (e.g., Mistral or DeepSeek) in order to expand the dataset to approximately 100 mission variants. These missions will be paired with their corresponding validated configuration outputs and stored in a structured JSONL format.
-    
-    \item Implement an inference pipeline using the Hugging Face Transformers framework to convert natural-language mission descriptions into structured JSON representations
-    
-    \item Experiment with prompt engineering strategies (zero-shot and few-shot prompting) to enforce strict schema adherence before considering any model fine-tuning techniques.
-    
-    \item Connect the validated JSON outputs to the existing component resolution and templating system to enable complete end-to-end configuration generation.
-    
-    \item Validate generated configurations in simulation and, where feasible, on the physical AntRobot platform to ensure structural correctness and reproducibility.
+    \item Complete independent author review of all generated paraphrases and freeze development and held-out partitions before further prompt changes.
+    \item Add independently annotated unsupported and ambiguous missions so that unsafe acceptance, unsupported-request rejection, and clarification recall can be measured.
+    \item Separate retrieval, parameter-selection, and value-reasoning errors through context ablations and an oracle-selection experiment that supplies the correct identifiers to the value stage.
+    \item Repeat the principal experiments to estimate run-to-run variation and report confidence intervals, since temperature zero alone does not guarantee identical inference.
+    \item Evaluate the second semantic-enrichment schema against the deterministic context variants, particularly whether aliases, user expressions, and typed relationships improve retrieval and coupled-parameter selection.
+    \item Refine prompts or compare alternative local models only on the development partition, then evaluate the frozen candidate once on the untouched held-out set.
+    \item Exercise complete generated bundles in ROS~2 simulation and, where feasible, on the physical AntRobot platform, including behavioral checks, failure handling, and reproducibility across repeated deployments.
 \end{itemize}
 
-By the end of the second semester, the expected outcomes include a synthetic mission configuration dataset, an LLM-assisted mission interpretation module, and a fully integrated prototype capable of transforming natural-language instructions into executable ROS deployments. This phase will complete the transition from a deterministic configuration framework to a hybrid semantic-to-execution orchestration system.
+These activities will determine whether the structurally complete prototype also provides reliable semantic behavior. In particular, they address the main limitation exposed by the current results: partial capability understanding does not compensate for poorly grounded parameter selection in an end-to-end configuration task.
 
 
 % \section{Indicații formatare tabele}

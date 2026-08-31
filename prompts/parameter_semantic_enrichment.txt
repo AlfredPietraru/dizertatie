@@ -3,10 +3,30 @@ Return exactly one SemanticEnrichmentBatch JSON object and no prose.
 
 The supplied declarations, reads, usages, interfaces, provenance, and relationships are evidence.
 Do not invent source facts. Keep uncertain fields null or empty and lower confidence accordingly.
-Every description and semantic claim must cite one or more supplied evidence_id values. Related
-parameters must use IDs present in the supplied evidence set. Semantic categories explain meaning;
-they never authorize or prohibit a user change. Do not classify values as configurable, fixed,
-internal, protected, approved, or rejected.
+When a parameter has supplied evidence_id values, every description and semantic claim must cite
+the relevant IDs. When it has no evidence_id values, return an empty evidence_ids list, rely only on
+the supplied deterministic fields, and lower confidence.
+
+Generate concise operator-facing metadata:
+- description: what the parameter means, not merely a restatement of its identifier;
+- aliases: short noun phrases an operator may use for the same concept;
+- user_expressions: short example phrases that express the parameter concept without specifying a
+  benchmark answer or copying an evaluation mission;
+- physical_quantity and unit when supported by evidence;
+- semantic_category, behavioral_effect, and constraints;
+- typed relationships to known parameter IDs.
+
+Use same_physical_property only when two parameters describe the same physical value,
+interface_consistency only when their values must agree for a ROS interface, behaviorally_related
+for weaker effects, and semantic_alternative for mutually substitutable settings. Set
+requires_joint_update=true only when a source_relationships or related_parameters entry supplied
+for the current parameter supports the target. Otherwise keep it false. Include every typed
+relationship target in related_parameters.
+
+Related parameters must use IDs present in the supplied evidence set. Do not use a parameter as its
+own relationship target. Semantic categories explain meaning; they never authorize or prohibit a
+user change. Do not classify values as configurable, fixed, internal, protected, approved, or
+rejected. Do not infer facts from evaluation missions or expected outputs.
 
 Parameter evidence:
 {{PARAMETER_EVIDENCE}}

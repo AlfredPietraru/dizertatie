@@ -88,21 +88,42 @@ class ParameterAIPipelineTests(unittest.TestCase):
         payload = {"enrichments": [{
             "parameter_id": wheel.parameter_id,
             "description": "Radius of each drive wheel.",
+            "aliases": ["drive wheel radius", "physical wheel radius"],
+            "user_expressions": ["make the wheels larger"],
             "physical_quantity": "length", "unit": "metres",
             "semantic_category": "robot_geometry",
             "behavioral_effect": ["Changes wheel-speed to linear-speed conversion."],
-            "constraints": ["Must be positive."], "related_parameters": [],
+            "constraints": ["Must be positive."],
+            "relationships": [{
+                "target_parameter_id": "nodes.joint_state_estimator.wheel_radius",
+                "relation": "same_physical_property", "requires_joint_update": True,
+                "reason": "Both components describe the same physical wheels.",
+                "confidence": 0.95, "evidence_ids": [wheel.declarations[0].evidence_id],
+            }],
+            "related_parameters": [],
             "confidence": 0.95, "evidence_ids": [wheel.declarations[0].evidence_id],
         }]}
         enricher = SemanticEnricher(
             lambda *_: json.dumps(payload),
             prompt_template=Path("prompts/parameter_semantic_enrichment.txt").read_text(),
         )
-        result = enricher.enrich([wheel], known_parameter_ids={wheel.parameter_id})
-        self.assertEqual(enrichment_by_parameter_id(result)[wheel.parameter_id]["unit"], "metres")
+        result = enricher.enrich([
+            wheel,
+        ], known_parameter_ids={
+            wheel.parameter_id, "nodes.joint_state_estimator.wheel_radius",
+        })
+        enriched = enrichment_by_parameter_id(result)[wheel.parameter_id]
+        self.assertEqual(enriched["unit"], "metres")
+        self.assertEqual(enriched["aliases"][0], "drive wheel radius")
+        self.assertEqual(
+            enriched["related_parameters"],
+            ["nodes.joint_state_estimator.wheel_radius"],
+        )
         payload["enrichments"][0]["evidence_ids"] = ["evidence:invented"]
         with self.assertRaisesRegex(ValueError, "unknown evidence"):
-            enricher.enrich([wheel], known_parameter_ids={wheel.parameter_id})
+            enricher.enrich([wheel], known_parameter_ids={
+                wheel.parameter_id, "nodes.joint_state_estimator.wheel_radius",
+            })
 
     def test_retrieval_and_graph_expansion_find_both_wheel_radius_parameters(self) -> None:
         result = retrieve_parameters(

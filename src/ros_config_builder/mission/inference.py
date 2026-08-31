@@ -73,7 +73,10 @@ class OllamaBackend:
             ],
             "stream": False,
             "format": self.response_model.model_json_schema(),
-            "options": {"temperature": 0},
+            # Some evidence-rich single-parameter prompts exceed Ollama's
+            # default 4K runtime context.  Keep enough room for the largest
+            # frozen evidence entry and its structured response.
+            "options": {"temperature": 0, "num_ctx": 8192},
         }).encode("utf-8")
         request = urllib.request.Request(
             f"http://{self.host}:11434/api/chat", data=payload,

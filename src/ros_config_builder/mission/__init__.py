@@ -14,7 +14,8 @@ from .retrieval import (
 from .semantics import (
     InterfaceEvidence, ParameterEvidence, ParameterEvidenceArtifact,
     SemanticEnricher, SemanticEnrichment, SemanticEnrichmentArtifact,
-    SemanticEnrichmentBatch, SourceExcerpt, build_parameter_evidence,
+    SemanticEnrichmentBatch, SemanticParameterRelationship, SourceExcerpt,
+    build_parameter_evidence,
     build_parameter_evidence_artifact, build_semantic_enrichment_artifact,
     build_semantic_enrichment_prompt, enrichment_by_parameter_id,
     evidence_by_parameter_id, load_parameter_evidence_artifact,

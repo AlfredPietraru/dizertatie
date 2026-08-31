@@ -7,6 +7,6 @@
   "baseline_scenario": "3.0",
   "renderer_validation_pipeline": "3.0-lean",
   "parameter_evidence": "1.0",
-  "semantic_enrichment": "1.0",
+  "semantic_enrichment": "2.0",
   "parameter_reasoning_dataset": "1.0"
 }
