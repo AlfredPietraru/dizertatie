@@ -204,7 +204,7 @@ def freeze_accepted_dataset(candidates: list[SyntheticCandidate], seeds: list[Sy
         record = {"id": candidate.candidate_id, "mission": candidate.text, "outcome": seed.outcome,
                   "strata": [*seed.strata, candidate.requested_style], "source_seed": seed.id}
         if seed.outcome == "supported":
-            record.update(expected={"capabilities": seed.capabilities.model_dump(mode="json", exclude_defaults=True)},
+            record.update(expected={"capabilities": seed.capabilities.model_dump(mode="json")},
                           expected_template_configuration=seed.expected_template_configuration)
         elif seed.outcome == "unsupported": record["unsupported_reason"] = seed.reason
         else:
@@ -284,7 +284,7 @@ def write_review_queue(candidates: list[SyntheticCandidate], seeds: list[Synthet
             lines += [f"## {seed.id}", "", f"Outcome: `{seed.outcome}`  ",
                       f"Verified intent: {seed.intent_description}", ""]
             if seed.outcome == "supported":
-                lines += ["```json", json.dumps(seed.capabilities.model_dump(mode="json", exclude_defaults=True),
+                lines += ["```json", json.dumps(seed.capabilities.model_dump(mode="json"),
                                                  indent=2, sort_keys=True), "```", ""]
             elif seed.outcome == "unsupported": lines += [f"Reason: {seed.reason}", ""]
             else: lines += [f"Reason: {seed.reason}  ", f"Question: {seed.clarification_question}", ""]

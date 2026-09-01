@@ -222,7 +222,7 @@ class _CapabilityConditionedReasoner:
         capabilities = (
             interpretation.capabilities
             if interpretation.status == "valid" and interpretation.capabilities is not None
-            else CapabilitySelections()
+            else CapabilitySelections.defaults()
         )
         realization = realize_capabilities(capabilities, self.registry)
         orchestration = resolve_ros_orchestration(
@@ -342,7 +342,7 @@ def main() -> int:
     ).model_dump(mode="json")
     registry = load_capability_registry(registry_path)
     validate_capability_registry(registry, system_model, schema, manifest)
-    realization = realize_capabilities(CapabilitySelections(), registry)
+    realization = realize_capabilities(CapabilitySelections.defaults(), registry)
     orchestration = resolve_ros_orchestration(realization, registry, system_model, manifest)
     evidence_artifact = load_parameter_evidence_artifact(evidence_path)
     if not parameter_evidence_artifact_matches(

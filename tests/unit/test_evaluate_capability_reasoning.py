@@ -6,21 +6,16 @@ def test_expected_reads_synthetic_capability_contract() -> None:
         "expected_capability_interpretation": {
             "status": "valid",
             "capabilities": {
-                "odometry": {
-                    "enabled": True,
-                    "implementation": "kiss_icp",
-                    "selection_basis": "explicit",
-                },
+                "mapping": "cartographer", "navigation": "nav2",
+                "exploration": "explore_lite", "odometry": "kiss_icp",
             },
         },
     })
     assert result == {
         "status": "valid",
         "capabilities": {
-            "odometry": {
-                "enabled": True,
-                "implementation": "kiss_icp",
-            },
+            "mapping": "cartographer", "navigation": "nav2",
+            "exploration": "explore_lite", "odometry": "kiss_icp",
         },
     }
 
@@ -29,14 +24,14 @@ def test_metrics_count_exact_status_and_field_quality() -> None:
     records = [
         {
             "source_seed": "seed-1", "exact": True, "status_correct": True, "error": None,
-            "expected_fields": {"mapping.enabled": True},
-            "predicted_fields": {"mapping.enabled": True},
-            "correct_fields": ["mapping.enabled"],
+            "expected_fields": {"mapping": "cartographer"},
+            "predicted_fields": {"mapping": "cartographer"},
+            "correct_fields": ["mapping"],
         },
         {
             "source_seed": "seed-1", "exact": False, "status_correct": True, "error": None,
-            "expected_fields": {"odometry.implementation": "kiss_icp"},
-            "predicted_fields": {"odometry.implementation": "kinematic_icp"},
+            "expected_fields": {"odometry": "kiss_icp"},
+            "predicted_fields": {"odometry": "kinematic_icp"},
             "correct_fields": [],
         },
     ]

@@ -53,11 +53,12 @@ The model must return one of three statuses:
 
 | Status | Meaning |
 |---|---|
-| `valid` | The request has a supported, unambiguous sparse capability selection |
+| `valid` | The request has a supported, unambiguous complete capability state |
 | `unsupported` | An explicitly requested capability or implementation is unavailable |
 | `needs_clarification` | More than one materially different supported interpretation remains |
 
-For `valid`, `capabilities` contains sparse selections. Unmentioned capabilities remain `null`; they are not automatically disabled.
+For `valid`, `capabilities` always contains exactly four fields. An implementation string means
+active and `null` means explicitly disabled. Unmentioned capabilities retain their defaults.
 
 Conceptually:
 
@@ -65,21 +66,15 @@ Conceptually:
 {
   "status": "valid",
   "capabilities": {
-    "mapping": {
-      "enabled": true,
-      "implementation": null,
-      "selection_basis": null
-    },
-    "odometry": {
-      "enabled": true,
-      "implementation": "kiss_icp",
-      "selection_basis": "explicit"
-    }
+    "mapping": "cartographer",
+    "navigation": "nav2",
+    "exploration": "explore_lite",
+    "odometry": "kiss_icp"
   }
 }
 ```
 
-An enabled capability with no implementation means “use the validated registry default.” An explicitly named implementation requires `selection_basis="explicit"`.
+No inference or provenance fields are returned. The implementation value is the complete state.
 
 ## Running example
 
@@ -90,10 +85,9 @@ Mission:
 Step 2 should infer:
 
 ```text
-mapping enabled
-odometry enabled with KISS-ICP explicitly selected
-navigation unmentioned
-exploration unmentioned
+mapping uses Cartographer
+odometry uses KISS-ICP
+navigation and exploration retain their defaults
 ```
 
 The full sentence is preserved. The 20-metre phrase is not discarded; it is handled by later retrieval, parameter selection, and value reasoning.
@@ -106,7 +100,7 @@ After the backend returns text:
 2. Pydantic rejects unknown fields and wrong types;
 3. status-specific invariants are checked;
 4. capability and implementation names are validated;
-5. a valid sparse result continues to Step 3.
+5. a valid complete result continues to Step 3.
 
 Schema-valid does not necessarily mean semantically correct. Semantic capability accuracy is measured by the mission evaluation dataset. The strict contract prevents malformed or invented structure from reaching deterministic realization.
 

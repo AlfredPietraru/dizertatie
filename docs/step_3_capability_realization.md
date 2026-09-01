@@ -1,6 +1,7 @@
 # Step 3 — deterministic capability realization
 
-Step 3 converts the sparse capability choices from Step 2 into one concrete, traceable system plan for the current mission.
+Step 3 converts the complete nullable implementation choices from Step 2 into one concrete,
+traceable system plan for the current mission.
 
 It is deterministic. No LLM call occurs here.
 

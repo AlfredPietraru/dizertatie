@@ -16,50 +16,30 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from ..templating import validate_configuration_values
 
 
-SelectionBasis = Literal["explicit", "requirement_match"]
-
-
 class MissionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class CapabilitySelection(MissionModel):
-    """Sparse choice shared by all capability-specific selections."""
-
-    enabled: bool | None = None
-    selection_basis: SelectionBasis | None = None
-
-    @model_validator(mode="after")
-    def check_sparse_selection(self) -> "CapabilitySelection":
-        implementation = getattr(self, "implementation", None)
-        if self.enabled is not True and implementation is not None:
-            raise ValueError("an implementation can only be selected when enabled is true")
-        if implementation is None and self.selection_basis is not None:
-            raise ValueError("selection_basis requires a selected implementation")
-        return self
-
-
-class MappingSelection(CapabilitySelection):
-    implementation: Literal["cartographer"] | None = None
-
-
-class NavigationSelection(CapabilitySelection):
-    implementation: Literal["nav2"] | None = None
-
-
-class ExplorationSelection(CapabilitySelection):
-    implementation: Literal["explore_lite"] | None = None
-
-
-class OdometrySelection(CapabilitySelection):
-    implementation: Literal["kinematic_icp", "kiss_icp"] | None = None
+MappingSelection = Literal["cartographer"] | None
+NavigationSelection = Literal["nav2"] | None
+ExplorationSelection = Literal["explore_lite"] | None
+OdometrySelection = Literal["kinematic_icp", "kiss_icp"] | None
 
 
 class CapabilitySelections(MissionModel):
-    mapping: MappingSelection = Field(default_factory=MappingSelection)
-    navigation: NavigationSelection = Field(default_factory=NavigationSelection)
-    exploration: ExplorationSelection = Field(default_factory=ExplorationSelection)
-    odometry: OdometrySelection = Field(default_factory=OdometrySelection)
+    """Complete capability state: implementation string means active; null means disabled."""
+
+    mapping: MappingSelection
+    navigation: NavigationSelection
+    exploration: ExplorationSelection
+    odometry: OdometrySelection
+
+    @classmethod
+    def defaults(cls) -> "CapabilitySelections":
+        return cls(
+            mapping="cartographer", navigation="nav2",
+            exploration="explore_lite", odometry="kinematic_icp",
+        )
 
 
 class MissionInterpretation(MissionModel):
@@ -75,6 +55,9 @@ class MissionInterpretation(MissionModel):
         if self.status == "valid":
             if self.capabilities is None:
                 raise ValueError("valid interpretations require capabilities")
+            required = {"mapping", "navigation", "exploration", "odometry"}
+            if self.capabilities.model_fields_set != required:
+                raise ValueError("valid interpretations require all four capability fields")
             if self.clarification_question is not None:
                 raise ValueError("valid interpretations cannot ask a clarification question")
         elif self.status == "unsupported":
@@ -90,7 +73,7 @@ class MissionInterpretation(MissionModel):
             if not self.reason or not self.clarification_question:
                 raise ValueError("needs_clarification requires a reason and clarification question")
         if self.capabilities is not None:
-            if self.capabilities.exploration.enabled is True and self.capabilities.mapping.enabled is False:
+            if self.capabilities.exploration is not None and self.capabilities.mapping is None:
                 raise ValueError("exploration requires mapping; mapping cannot be explicitly disabled")
         return self
 
@@ -502,7 +485,7 @@ def realize_capabilities(
     selections: CapabilitySelections,
     registry: AntRobotCapabilityRegistry,
 ) -> SystemRealization:
-    """Resolve sparse capability choices into components and frozen renderer inputs."""
+    """Resolve complete nullable implementation choices into components and renderer inputs."""
     component_claims: dict[str, list[ComponentClaim]] = {}
     renderer_claims: dict[str, list[RendererClaim]] = {}
     baseline = set(registry.baseline_components)
@@ -521,28 +504,15 @@ def realize_capabilities(
     states: dict[str, dict[str, Any]] = {}
     for capability_name, definition in registry.capabilities.items():
         selection = getattr(selections, capability_name, None)
-        enabled = None if selection is None else selection.enabled
-        implementation_name = None if selection is None else getattr(selection, "implementation", None)
+        enabled = selection is not None
+        implementation_name = selection
         states[capability_name] = {
             "enabled": enabled,
             "implementation": implementation_name,
-            "user_mentioned": enabled is not None,
-            "reason": "explicit_disable" if enabled is False else "explicit_selection",
+            "user_mentioned": True,
+            "reason": "explicit_selection" if enabled else "explicit_disable",
             "derived": False,
         }
-        if enabled is None:
-            default = definition.implementations[definition.default_implementation]
-            default_ids = {item.component_id for item in default.components}
-            baseline_active = bool(default_ids) and default_ids <= baseline
-            states[capability_name].update(
-                enabled=baseline_active,
-                implementation=definition.default_implementation if baseline_active else None,
-                reason="baseline_preserved",
-            )
-        elif enabled is True:
-            states[capability_name]["implementation"] = (
-                implementation_name or definition.default_implementation
-            )
 
     def require_dependencies(capability_name: str) -> None:
         state = states[capability_name]

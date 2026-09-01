@@ -24,7 +24,7 @@ class SeedBase(MissionModel):
 
 
 class SeedConfiguration(MissionModel):
-    capabilities: CapabilitySelections = Field(default_factory=CapabilitySelections)
+    capabilities: CapabilitySelections = Field(default_factory=CapabilitySelections.defaults)
 
 
 class ValidSeed(SeedBase):

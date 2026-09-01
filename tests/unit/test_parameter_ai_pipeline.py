@@ -36,7 +36,7 @@ class ParameterAIPipelineTests(unittest.TestCase):
         cls.evidence = build_parameter_evidence(".", cls.schema, cls.model)
         cls.manifest = json.loads(Path("configuration_templates/manifest.json").read_text())
         registry = load_capability_registry("configuration_templates/capability_registry.yaml")
-        realization = realize_capabilities(CapabilitySelections(), registry)
+        realization = realize_capabilities(CapabilitySelections.defaults(), registry)
         orchestration = resolve_ros_orchestration(
             realization, registry, cls.model, cls.manifest,
         )
@@ -177,7 +177,7 @@ class ParameterAIPipelineTests(unittest.TestCase):
         }
         registry = load_capability_registry("configuration_templates/capability_registry.yaml")
         catalogue = derive_parameter_catalogue(
-            realize_capabilities(CapabilitySelections(), registry), self.schema,
+            realize_capabilities(CapabilitySelections.defaults(), registry), self.schema,
             evidence_by_id=evidence_by_parameter_id(self.evidence),
             semantic_enrichments=enrichment,
         )

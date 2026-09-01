@@ -29,21 +29,19 @@ class OrchestratedEvaluationLoggingTests(unittest.TestCase):
         self.assertEqual(metrics["parameter_reasoning"]["value_accuracy"], 0.0)
         self.assertEqual(metrics["llm_end_to_end_exact_match"]["rate"], 0.0)
 
-    def test_capability_comparison_ignores_selection_basis(self) -> None:
+    def test_capability_comparison_uses_minimal_implementation_values(self) -> None:
         expected = _expected({
             "expected_capability_interpretation": {
                 "status": "valid",
                 "capabilities": {
-                    "mapping": {
-                        "enabled": True,
-                        "implementation": "cartographer",
-                        "selection_basis": "explicit",
-                    },
+                    "mapping": "cartographer", "navigation": "nav2",
+                    "exploration": "explore_lite", "odometry": "kinematic_icp",
                 },
             },
         })
         self.assertEqual(expected["capabilities"], {
-            "mapping": {"enabled": True, "implementation": "cartographer"},
+            "mapping": "cartographer", "navigation": "nav2",
+            "exploration": "explore_lite", "odometry": "kinematic_icp",
         })
 
     def test_failure_artifacts_include_every_llm_stage(self) -> None:

@@ -329,9 +329,7 @@ def run() -> int:
                 "mission": candidate.text,
                 "expected_capability_interpretation": {
                     "status": "valid",
-                    "capabilities": seed.capabilities.model_dump(
-                        mode="json", exclude_defaults=True
-                    ),
+                    "capabilities": seed.capabilities.model_dump(mode="json"),
                 },
                 "expected_parameters": expected_parameters,
             }

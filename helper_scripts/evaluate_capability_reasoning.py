@@ -37,23 +37,10 @@ def _sparse(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: cleaned for key, item in value.items()
-            if (cleaned := _sparse(item)) not in (None, {}, [])
+            if (cleaned := _sparse(item)) not in ({}, [])
         }
     if isinstance(value, list):
         return [_sparse(item) for item in value]
-    return value
-
-
-def _without_control_fields(value: Any) -> Any:
-    """Remove provenance fields that do not affect capability realization."""
-    if isinstance(value, dict):
-        return {
-            key: _without_control_fields(item)
-            for key, item in value.items()
-            if key != "selection_basis"
-        }
-    if isinstance(value, list):
-        return [_without_control_fields(item) for item in value]
     return value
 
 
@@ -85,7 +72,7 @@ def _expected(case: dict[str, Any]) -> dict[str, Any]:
     validated = CapabilitySelections.model_validate(capabilities)
     return {
         "status": status,
-        "capabilities": _without_control_fields(_sparse(validated.model_dump(mode="json"))),
+        "capabilities": _sparse(validated.model_dump(mode="json")),
     }
 
 
@@ -209,9 +196,7 @@ def main() -> int:
             predicted_status = interpretation.status
             prediction = {
                 "status": predicted_status,
-                "capabilities": _without_control_fields(
-                    _sparse(interpretation.capabilities.model_dump(mode="json"))
-                )
+                "capabilities": _sparse(interpretation.capabilities.model_dump(mode="json"))
                 if interpretation.capabilities is not None else {},
             }
         except Exception as caught:

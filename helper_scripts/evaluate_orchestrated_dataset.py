@@ -258,23 +258,10 @@ def _sparse(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: cleaned for key, item in value.items()
-            if (cleaned := _sparse(item)) not in (None, {}, [])
+            if (cleaned := _sparse(item)) not in ({}, [])
         }
     if isinstance(value, list):
         return [_sparse(item) for item in value]
-    return value
-
-
-def _without_control_fields(value: Any) -> Any:
-    """Remove provenance-only fields that do not affect capability realization."""
-    if isinstance(value, dict):
-        return {
-            key: _without_control_fields(item)
-            for key, item in value.items()
-            if key != "selection_basis"
-        }
-    if isinstance(value, list):
-        return [_without_control_fields(item) for item in value]
     return value
 
 
@@ -313,10 +300,10 @@ def _expected(case: dict[str, Any]) -> dict[str, Any]:
                        if key.startswith("nodes.")})
     return {
         "status": interpretation.status,
-        "capabilities": _without_control_fields(_sparse(
+        "capabilities": _sparse(
             interpretation.capabilities.model_dump(mode="json")
             if interpretation.capabilities is not None else {}
-        )),
+        ),
         "parameters": parameters,
     }
 
@@ -642,8 +629,8 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
             predicted_status = (
                 "valid" if reasoning.status in {"valid", "no_change"} else reasoning.status
             )
-        predicted_capabilities = _without_control_fields(
-            _sparse(interpretation.capabilities.model_dump(mode="json"))
+        predicted_capabilities = _sparse(
+            interpretation.capabilities.model_dump(mode="json")
         ) if interpretation is not None and interpretation.capabilities is not None else {}
         selected = {
             item.parameter_id: True
