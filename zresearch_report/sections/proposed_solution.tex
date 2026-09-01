@@ -17,6 +17,13 @@ The complete method consists of the following stages:
     \item deterministic generation, validation, and application of a sparse configuration plan.
 \end{enumerate}
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.96\textwidth]{pics/diagram1.png}
+    \caption{Complete architecture of the proposed hybrid ROS~2 configuration framework.}
+    \label{fig:proposed-complete-architecture}
+\end{figure}
+
 The proposed solution deliberately does not allow the language model to write arbitrary launch or parameter files. The model operates through structured contracts whose outputs refer to identifiers already present in the frozen configuration representation. Launch and YAML artifacts are produced only after the proposed identifiers and values have passed deterministic checks. In this way, language-model reasoning is used where semantic interpretation is required, while conventional software remains responsible for existence, type, provenance, consistency, and rendering correctness.
 
 \section{ROS 2 System Knowledge Extraction}
@@ -49,8 +56,15 @@ When one wildcard YAML value affects multiple components, the representation con
 The integrated model and the physical configuration representation are saved as frozen artifacts. Here, frozen means that they are treated as immutable inputs for a run or experiment. It does not refer to a ROS runtime feature. When source code, launch structure, parameter files, or extraction logic changes, the dependent artifacts must be regenerated in order.
 This frozen boundary makes the language-model experiment reproducible. The same identifiers, values, relationships, and evidence can be supplied across repeated runs and context ablations.
 
-\section{Deterministic Parameter Metadata and Evidence}
-Metadata is constructed for every writable physical configuration slot discovered in the analyzed deployment. In the current method, this metadata is produced entirely by deterministic repository analysis. Each field must be traceable to Python source, launch structure, a ROS parameter file, package metadata, or a relationship derived by integrating those sources.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\textwidth]{pics/det_knowledge_artifact_generation.png}
+    \caption{Deterministic construction of system knowledge and configuration artifacts.}
+    \label{fig:deterministic-knowledge-generation}
+\end{figure}
+
+\section{Deterministic Evidence and LLM-Enriched Parameter Metadata}
+Metadata is constructed for every writable physical configuration slot discovered in the analyzed deployment. The current method combines two deliberately separated sources. Deterministic repository analysis establishes parameter identity, type, current value, provenance, writable target, affected components, source evidence, and relationships directly supported by the analyzed system. A separate language-model enrichment stage derives semantic descriptions and vocabulary that are difficult to recover through syntax alone. The semantic enrichment never replaces the deterministic identity or evidence of a parameter and cannot introduce a new writable configuration slot.
 The construction starts from effective parameter occurrences in the unified system model. Occurrences controlled by the same physical location are grouped into one configuration record. A ROS parameter assigned through YAML is identified by its file, node selector, and nested parameter path. A launch argument is identified by its root launch interface. This projection is necessary because one YAML wildcard may affect several deployed components, whereas configuration application must still modify that value only once.
 For each resulting record, the extractor assigns a stable canonical identifier and retains the source name, configuration kind, value type, declared default, current effective value, known allowed values or numerical bounds, ordered provenance, writable target, affected components, and deterministically discovered relationships. It also creates a bounded evidence package containing source references and short excerpts for declarations, reads, and usages, together with related ROS interfaces when those interfaces can be established from the repository. Unavailable facts remain absent or explicitly unresolved; they are not inferred from the parameter name.
 
@@ -80,7 +94,31 @@ Known constraints & Numerical type; no additional bound is recorded unless one i
 \end{tabular}
 \end{table}
 
-The metadata table is representative of the record structure, not a manually authored annotation. The same extraction procedure is applied to all discovered ROS parameter slots and root launch arguments. Hardware dimensions, algorithm settings, topic and frame names, timing values, and activation arguments are therefore represented uniformly, while retaining their different physical targets and source evidence. These records form the complete parameter catalogue used by the later reasoning pipeline. Deterministic retrieval searches fields that actually exist in the catalogue, such as identifiers, source names, component names, current values, source evidence, ROS interfaces, and extracted relationships. The resulting bounded candidate records are therefore grounded entirely in repository facts.
+The language-model enrichment stage operates on the bounded deterministic evidence associated with one parameter. Its output is validated against a strict schema and the known parameter catalogue. In particular, relationship targets must refer to existing parameter identifiers, confidence values must lie between zero and one, and evidence references used during enrichment must originate from the supplied evidence package. Table~\ref{tab:llm-parameter-metadata} summarizes the semantic fields produced by this stage.
+
+\begin{table}[htbp]
+\centering
+\caption{Semantic parameter metadata extracted by the language-model enrichment stage.}
+\label{tab:llm-parameter-metadata}
+\begin{tabular}{p{0.25\textwidth} p{0.68\textwidth}}
+\hline
+\textbf{Metadata field} & \textbf{Meaning} \\
+\hline
+Description & Concise natural-language explanation of what the parameter controls in the analyzed component. \\
+Aliases & Alternative technical names and short expressions that may refer to the same parameter. \\
+User expressions & Representative phrases an operator may use when requesting a change without naming the canonical parameter identifier. \\
+Physical quantity & The measured or configured physical concept, such as distance, frequency, velocity, angle, or covariance, when applicable. \\
+Unit & The semantic unit associated with the value, such as metres, hertz, seconds, or radians, when supported by the evidence. \\
+Semantic category & A higher-level grouping such as robot geometry, sensor configuration, timing, navigation, or uncertainty. \\
+Behavioral effect & One or more descriptions of how changing the value can affect observable system behavior. \\
+Constraints & Semantic restrictions or conditions inferred from the supplied evidence, without replacing deterministically known types, allowed values, or numerical bounds. \\
+Relationships & Typed links to another known parameter. Each link contains the target parameter identifier, relationship type, whether a joint update is required, a concise reason, and a confidence value. \\
+Confidence & A value between zero and one representing confidence in the semantic enrichment record. \\
+\hline
+\end{tabular}
+\end{table}
+
+The two metadata tables are representative of the record structure, not manually authored annotations. The same deterministic extraction and semantic enrichment procedure is applied to all discovered ROS parameter slots and root launch arguments. Hardware dimensions, algorithm settings, topic and frame names, timing values, and activation arguments are therefore represented uniformly while retaining their different physical targets and source evidence. These records form the complete parameter catalogue used by the later reasoning pipeline. In the LLM-semantic retrieval variant, aliases, user expressions, descriptions, physical quantities, units, semantic categories, behavioral effects, constraints, and typed relationships provide the searchable semantic surface. Canonical identifiers, current values, types, writable targets, and provenance remain deterministic facts used for validation and application.
 
 \section{Natural-Language Configuration Reasoning}
 Natural-language configuration reasoning uses at most three sequential language-model calls, with deterministic processing and validation between them. The calls have separate responsibilities:
@@ -92,7 +130,12 @@ Natural-language configuration reasoning uses at most three sequential language-
 All three calls may use the same underlying language model, but they use different instruction prompts and structured response contracts. They are therefore separate inference calls rather than three necessarily different models. The third call is made only after a valid parameter selection, and the pipeline may terminate earlier when a preceding call reports an unsupported request, a need for clarification, or no requested parameter change. Separating the calls makes capability interpretation, parameter identification, and value derivation independently constrained and independently measurable.
 
 % DIAGRAM PLACEMENT: insert the figure exported from
-% proposed_solution_diagrams.md, "Three-call language-model pipeline", here.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.72\textwidth]{pics/three_call_llm_pipeline.png}
+    \caption{Three-stage language-model reasoning pipeline with deterministic processing between calls.}
+    \label{fig:three-call-llm-pipeline}
+\end{figure}
 
 The capability interpreter receives the user's mission and a language-model-safe projection of the capability registry. The registry represents human-authored robot design knowledge: supported capabilities, available implementations, descriptive characteristics, and dependency information. It does not expose concrete renderer assignments to the language model. The model therefore decides what capability the user requested, not how launch files should be manipulated.
 The interpretation is sparse. For each supported capability, the model may mark it as enabled, explicitly disabled, or unmentioned. When enabled, it may select a supported implementation if the request justifies a specific choice. Unmentioned and disabled are deliberately different states. An unmentioned capability preserves the baseline and creates no override. An explicitly disabled capability produces a deterministic request to disable the components belonging to that capability.
@@ -124,6 +167,13 @@ Value reasoning is invoked only after a valid selection. It receives the origina
 Separating selection from value reasoning prevents the model from hiding an incorrect parameter choice inside an otherwise plausible numerical answer. It also permits independent evaluation of whether the system found the right configuration elements and whether it derived the right values.
 The value stage may return a clarification or unsupported result if the selected context does not contain enough information to determine a responsible change. For a valid result, every proposed change must repeat the current value observed in the frozen catalogue. This old-value check prevents a response generated against stale context from being applied silently.
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\textwidth]{pics/4parameter_retrieval.png}
+    \caption{Bounded parameter retrieval followed by separated selection and value reasoning.}
+    \label{fig:parameter-retrieval-reasoning}
+\end{figure}
+
 \section{Configuration Plan Generation and Validation}
 The conclusions of the language-model stages are not applied directly to files. They are converted into explicit intermediate plans that form a deterministic boundary between inference and system modification.
 The first intermediate representation is the system realization produced from capability choices. It contains component activation claims, selected implementations, dependencies, required ROS connections, launch-level realization values, and provenance. The second representation is the validated set of parameter changes produced after selection and value reasoning. These two sources are merged into one sparse configuration plan.
@@ -142,6 +192,13 @@ The merged plan is checked against the complete physical configuration represent
 Generated launch files are checked for valid Python syntax, and generated parameter files are checked for valid top-level mappings and ROS parameter structure. Missing template variables, unknown configuration keys, incomplete baselines, and unsupported manifest versions are rejected. More expensive system-equivalence analysis is retained as an offline assurance method rather than performed during every mission.
 These validation layers establish structural and factual correctness. They do not claim to prove that every semantically plausible parameter change is physically safe for every robot or environment. Such domain assurance requires additional system-specific constraints or experimental validation.
 
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\textwidth]{pics/sparse_plan_validation.png}
+    \caption{Validation and deterministic application of the sparse configuration plan.}
+    \label{fig:sparse-plan-validation}
+\end{figure}
+
 \section{Configuration Application and End-to-End Workflow}
 Once the sparse plan has passed validation, it is applied deterministically through a complete baseline and generated templates. The baseline contains one value for every physical configuration slot. Mission values are overlaid on that baseline, so any value not mentioned by the plan remains unchanged.
 The resolved context is materialized through predefined launch and parameter templates. The language model does not produce launch syntax, YAML structure, output paths, or installation targets. These are fixed by the renderer definition. Strict template evaluation ensures that a missing value cannot silently become an empty string.
@@ -158,6 +215,13 @@ The value model receives the selected maximum-range record, its current value an
 The validated parameter change is merged with the launch-level values from capability realization. The resulting sparse plan contains only the values needed to activate mapping, select KISS-ICP and its dependency, displace the alternative implementation, and set the requested maximum range. All unrelated baseline values remain absent from the plan.
 The plan is checked for key existence, type correctness, renderability, and conflicts. It is then overlaid on the complete baseline and rendered through predefined launch and parameter templates. The resulting files are checked structurally and packaged with traceability information. At no point does the language model directly edit a ROS file or select an output path.
 This example illustrates the intended division of responsibility: the language model maps natural language to supported capabilities, relevant parameters, and requested values; deterministic representations establish what exists; deterministic realization expands robot-specific design knowledge; and deterministic validation and rendering ensure that the conclusion can be applied to the modeled system.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.90\textwidth]{pics/end_to_end_request.png}
+    \caption{Processing of a representative mapping and KISS--ICP configuration request.}
+    \label{fig:representative-end-to-end-request}
+\end{figure}
 
 \section{Limitations and Design Boundaries}
 The proposed method intentionally adopts several boundaries in order to keep the research focus on source-grounded language-model reasoning.

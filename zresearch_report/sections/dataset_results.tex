@@ -1,7 +1,7 @@
 \chapter{Dataset and Experimental Results}
 \label{chap:dataset-results}
 
-This chapter describes the construction of the AntRobot natural-language mission dataset, the evaluation protocol used for the language-model stages, and the first experimental baseline. The purpose of the experiment is to measure the behavior of the language interface before prompt refinement, additional demonstrations, model adaptation, or retrieval ablations. Configuration rendering, generated YAML files, and generated launch files are outside the scope of this experiment; only the outputs of the language-model stages are evaluated.
+This chapter describes the construction of the AntRobot natural-language mission dataset, the evaluation protocol used for the language-model stages, and the complete sequence of recorded experiments. The experiments follow the implementation from the initial production-prompt baseline, through few-shot prompting and the unified orchestrated evaluator, to the simplified capability contract and bounded semantic parameter pipeline. Configuration rendering, generated YAML files, and generated launch files are outside the scored boundary; the reported results concern the three language-model stages and their deterministic validation.
 
 \section{Dataset construction}
 
@@ -71,7 +71,7 @@ Outcome accuracy is the proportion of missions assigned the correct terminal sta
 
 \subsection{Capability metrics}
 
-Capability exact match requires the complete sparse capability object to equal the reference annotation. Any missing capability field, extra field, wrong implementation, or incorrect selection basis makes the case incorrect. Capability micro precision and recall instead compare individual field--value pairs over the full dataset. Their harmonic mean is
+Capability exact match requires the complete capability mapping to equal the reference annotation. In the current minimal contract, all four capability keys are present and each value is either an implementation identifier or \texttt{null} for explicit deactivation. Any missing key, extra key, wrong implementation, or incorrect deactivation makes the case incorrect. Capability micro precision and recall instead compare individual capability--value pairs over the full dataset. Their harmonic mean is
 
 \begin{equation}
 F_1 = 2 \cdot \frac{P \cdot R}{P + R},
@@ -92,6 +92,59 @@ Parameter-value exact match requires the complete expected identifier--value map
 Joint LLM exact match requires the correct outcome, an exact capability object, an exact parameter set, and exact values for all applicable stages. Validated inference completion measures whether all required calls returned outputs that passed JSON, schema, bounded-context, identifier, and value validation; completion does not imply semantic correctness.
 
 For the generated dataset, paraphrase consistency is the fraction of seed groups for which all ten variants produce the same structured outputs. Group robustness is stricter: all ten variants must be jointly correct. Mean, median, and 95th-percentile latency describe the cost of all model calls reached by a mission.
+
+\section{Experimental progression}
+
+Four complete evaluations of the 150-mission dataset are retained under \texttt{artifacts/evaluation}. Table~\ref{tab:experiment-progression} presents them in implementation order. All runs use \texttt{qwen2.5-coder:7b} at temperature zero. The table reports exact-match rates over all missions, micro $F_1$ where partial credit is meaningful, completion after deterministic validation, robustness across each ten-paraphrase group, and total latency per mission.
+
+\begin{table}[H]
+\centering
+\caption{Progressive results for all full-dataset experiments retained in \texttt{artifacts/evaluation}.}
+\label{tab:experiment-progression}
+\small
+\begin{tabular}{p{5.0cm}rrrr}
+\toprule
+Metric & Baseline & Few-shot & Unified & Minimal contract \\
+\midrule
+Outcome accuracy & 63.3\% & 90.7\% & 62.0\% & \textbf{96.7\%} \\
+Capability exact match & 38.7\% & 38.7\% & 75.3\% & \textbf{96.7\%} \\
+Capability micro $F_1$ & 76.1\% & 71.2\% & 92.6\% & \textbf{98.5\%} \\
+Parameter-selection exact match & 0.7\% & 0.7\% & 53.3\% & \textbf{88.7\%} \\
+Parameter-selection micro $F_1$ & 1.6\% & 11.8\% & 30.6\% & \textbf{91.8\%} \\
+Parameter-value exact match & 0.7\% & 0.7\% & 53.3\% & \textbf{88.7\%} \\
+Parameter-value micro $F_1$ & 1.6\% & 11.8\% & 31.6\% & \textbf{92.6\%} \\
+Joint LLM exact match & 0.0\% & 0.0\% & 40.0\% & \textbf{88.0\%} \\
+Validated pipeline completion & 43.3\% & 18.0\% & 94.7\% & \textbf{98.7\%} \\
+Paraphrase consistency & 6.7\% & 20.0\% & 20.0\% & \textbf{33.3\%} \\
+Group robustness & 0.0\% & 0.0\% & 13.3\% & \textbf{60.0\%} \\
+Mean latency per mission & 5.64 s & 6.91 s & \textbf{5.53 s} & 8.56 s \\
+95th-percentile latency & 14.65 s & \textbf{14.85 s} & 15.55 s & 15.41 s \\
+Runtime/validation errors & 85 & 123 & 8 & \textbf{2} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The four columns are successive system revisions rather than a controlled single-factor ablation. In particular, the two early artifacts use the original dataset annotation and top-12 graph context, whereas the orchestrated artifacts use revised capability annotations, top-10 semantic retrieval, and production-like composition of the independently evaluated stages. The comparison therefore documents engineering progress of the complete system; it does not assign the final gain to one isolated change.
+
+\subsection{Step 1: initial production-prompt baseline}
+
+The baseline used the original capability representation, top-12 graph retrieval, and the first production prompts. Capability reasoning showed partial understanding, with 76.1\% micro $F_1$, but complete capability objects were correct in only 38.7\% of missions. Parameter grounding was the dominant failure: parameter-selection exact match was 0.7\%, joint exact match was zero, and only 43.3\% of missions completed all applicable validated calls.
+
+\subsection{Step 2: few-shot prompt demonstrations}
+
+The few-shot run held the original model and retrieval configuration fixed and added systematic demonstrations to all three prompts. These examples clarified capability-only requests, bounded identifier selection, coupled physical parameters, and unit conversion. Outcome accuracy increased from 63.3\% to 90.7\%, and parameter micro $F_1$ increased from 1.6\% to 11.8\%. However, exact parameter accuracy did not improve and validated completion fell to 18.0\%. The intervention improved partial semantic recognition but also encouraged more attempted outputs that violated strict schema or grounding checks. This motivated structural separation and deterministic context control rather than relying on examples alone.
+
+\subsection{Step 3: unified orchestrated evaluation}
+
+The unified run evaluated the three agents in the same order and with the same intermediate contracts used by the application. Parameter retrieval was reduced to ten candidates and enriched with LLM-derived aliases, user expressions, behavioral descriptions, constraints, and typed relationships. Retrieval ranks and scores were kept outside the model-facing context; capability realization restricted the catalogue to active components; capability-only requests were prevented from becoming invented launch-argument changes; and selection and value generation were separated. A single validation-guided retry was internal to the pipeline. These changes raised capability exact match to 75.3\%, parameter-selection exact match to 53.3\%, joint exact match to 40.0\%, and validated completion to 94.7\%. The run demonstrated successful composition of the independently tested agents, but capability errors still propagated into retrieval and parameter reasoning.
+
+\subsection{Step 4: minimal capability contract}
+
+The final recorded experiment simplified capability output to four direct capability values. Each value is the selected implementation, while \texttt{null} is reserved for an explicitly disabled capability. The capability prompt preserves registry defaults for unmentioned capabilities, changes an implementation only when requested, distinguishes capability selection from parameter tuning, and omits inference provenance such as \texttt{selection\_basis}. Dataset annotations and deterministic realization were updated to the same contract. Additional prompt rules addressed negation and short parameter-only missions, while active-component filtering, semantic top-10 retrieval, bounded parameter selection, value-only reasoning, and deterministic validation remained in place.
+
+This final step produced the strongest result in every semantic correctness measure: capability exact match reached 96.7\%, parameter-selection and parameter-value exact match reached 88.7\%, and 132 of 150 missions were jointly exact, corresponding to 88.0\%. Only two missions ended in runtime or validation errors, and 98.7\% completed the validated pipeline. Nine of the fifteen seed groups were correct for all ten paraphrases. Mean latency increased to 8.56 seconds because more missions successfully reached all applicable reasoning stages and the internal correction path could be exercised.
+
+For parameter-changing missions specifically, the minimal-contract artifact reports retrieval recall of 65.8\% at rank one, 98.7\% within the top three, and 100\% within the top five. Selection exact-set accuracy over the 80 parameter-change cases was 83.8\%, individual-value accuracy was 96.4\%, and complete-value-set accuracy was 83.8\%. This supports the staged design: once the correct bounded identifiers are available, generating their values is considerably more reliable than identifying the complete parameter set.
 
 \section{Initial baseline experiment}
 
@@ -171,6 +224,6 @@ The demonstrations substantially improved recognition of supported missions: out
 
 \section{Limitations and next experiments}
 
-The baseline is a single run of one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware. Repeated runs are needed to estimate variance and confidence intervals. The dataset also requires final independent author review, and its current all-supported composition prevents measurement of unsupported-request rejection, clarification recall, or unsafe execution.
+Each artifact is a single run of one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware, so repeated runs are needed for variance estimates and confidence intervals. The progression also combines prompt, contract, dataset-label, retrieval, and orchestration changes. It demonstrates the improvement of the implemented system, but controlled ablations are required to quantify the contribution of each intervention independently.
 
-The next experiments should therefore: finalize human review; add independently annotated unsupported and ambiguous missions; repeat the baseline; evaluate parameter values with oracle parameter selection; compare context variants while holding the model and prompts fixed; and only then compare revised prompts or alternative models against this frozen baseline.
+The dataset still requires final independent author review, and its all-supported composition prevents measurement of unsupported-request rejection, clarification recall, or unsafe execution. Subsequent experiments should add independently annotated unsupported and ambiguous missions, repeat the final pipeline, compare deterministic-only and LLM-enriched retrieval under the same contract, evaluate value reasoning with oracle parameter selection, and compare alternative local models against the frozen minimal-contract pipeline.

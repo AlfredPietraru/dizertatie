@@ -5,60 +5,25 @@ These Mermaid diagrams accompany `proposed_solution.tex`. They are kept outside 
 ## 1. Complete proposed architecture
 
 ```mermaid
-flowchart TD
-    SRC[ROS 2 Python, launch, YAML, package metadata]
-    SRC --> EXT[Deterministic knowledge extraction]
-    EXT --> SYS[Unified deployed-system model]
-    SYS --> CFG[Physical configuration representation]
-    SYS --> EVD[Grounded parameter evidence]
-    CFG --> TPL[Templates, complete baseline, lean manifest]
-
-    REG[Human-authored capability registry] --> START[Startup cross-validation]
-    SYS --> START
-    CFG --> START
-    EVD --> START
-    TPL --> START
-
-    USER[User mission] --> CAP[LLM capability interpretation]
-    START --> CAP
-    CAP --> REAL[Deterministic capability realization]
-    REAL --> ROS[ROS connection and QoS verification]
-    ROS --> RET[Deterministic lexical retrieval and graph expansion]
-    USER --> RET
-    RET --> SEL[LLM parameter selection]
-    SEL --> VAL[LLM value reasoning]
-    VAL --> PLAN[Deterministic sparse plan generation]
-    PLAN --> CHECK[Configuration validation]
-    CHECK --> RENDER[Deterministic launch and YAML rendering]
-    RENDER --> OUT[Mission-specific ROS 2 configuration bundle]
+flowchart LR
+    SRC[ROS 2 repository] --> MODEL[Deterministic system model<br/>and configuration knowledge]
+    REG[Capability registry] --> REASON[Three-stage LLM reasoning]
+    MODEL --> REASON
+    USER[User mission] --> REASON
+    REASON --> VALIDATE[Deterministic realization<br/>and validation]
+    VALIDATE --> RENDER[Template-based rendering]
+    RENDER --> OUT[ROS 2 configuration bundle]
 ```
 
 ## 2. Deterministic knowledge and artifact generation
 
 ```mermaid
 flowchart LR
-    PY[Python ROS entities] --> INT[System integration]
-    LAUNCH[Launch and deployment facts] --> INT
-    YAML[Parameter assignments] --> INT
-    PKG[Package metadata] --> INT
-
-    INT --> INST[Deployment instances]
-    INT --> PARAM[Effective parameters and provenance]
-    INT --> IFACE[Effective ROS interfaces]
-    INT --> UNRES[Explicit unresolved facts]
-
-    INST --> SYS[Versioned unified system model]
-    PARAM --> SYS
-    IFACE --> SYS
-    UNRES --> SYS
-
-    SYS --> SLOTS[Physical configuration slots]
-    SYS --> EVIDENCE[Bounded source and interface evidence]
-    SLOTS --> DEFINITION[Templates, baseline, renderer manifest]
-
-    SYS --> HASH[Artifact freshness hashes]
-    SLOTS --> HASH
-    HASH --> EVIDENCE
+    SRC[Python, launch, YAML,<br/>and package files] --> EXTRACT[Static extraction<br/>and integration]
+    EXTRACT --> SYS[Versioned deployed-system model]
+    SYS --> CFG[Physical configuration<br/>and deterministic evidence]
+    CFG --> SEM[Validated semantic metadata]
+    CFG --> GEN[Baseline, templates,<br/>and renderer definition]
 ```
 
 ## 3. Three-call language-model pipeline
@@ -68,59 +33,36 @@ Suggested placement: immediately after the opening explanation in the `Natural-L
 ```mermaid
 flowchart TD
     M[User mission] --> C1[LLM call 1<br/>Capability interpretation]
-    C1 --> V1{Valid capability result?}
-    V1 -- no --> STOP[Unsupported, clarification,<br/>or early termination]
-    V1 -- yes --> R1[Deterministic capability realization<br/>and ROS connection checks]
-    R1 --> RET[Deterministic parameter retrieval<br/>and bounded candidate context]
-    RET --> C2[LLM call 2<br/>Parameter selection]
-    C2 --> V2{Valid selection?}
-    V2 -- no --> STOP
-    V2 -- yes --> SVAL[Deterministic identifier<br/>and evidence validation]
-    SVAL --> C3[LLM call 3<br/>Parameter value reasoning]
-    C3 --> V3[Deterministic old-value, type,<br/>constraint, and plan validation]
+    C1 --> D1[Realize capabilities and<br/>build bounded context]
+    D1 --> C2[LLM call 2<br/>Parameter selection]
+    C2 --> D2[Validate selection<br/>and retry once if needed]
+    D2 --> C3[LLM call 3<br/>Value reasoning]
+    C3 --> D3[Validate values<br/>and retry once if needed]
+    D3 --> OUT[Validated configuration decisions]
 ```
 
 ## 4. Parameter retrieval and separated LLM reasoning
 
 ```mermaid
 flowchart TD
-    M[Mission text] --> TOK[Normalization, stop-word removal, stemming]
-    CAT[Complete parameter catalogue] --> DOC[Variant-dependent searchable fields]
-    TOK --> SCORE[Weighted lexical scoring]
-    DOC --> SCORE
-    SCORE --> TOP[Top-k candidates]
-    GRAPH[Parameter relationships and wiring bindings] --> EXPAND[Bounded graph expansion]
-    TOP --> EXPAND
-    EXPAND --> CONTEXT[Character-budgeted selection context]
-
-    CONTEXT --> SELECT[LLM parameter selection]
-    M --> SELECT
-    SYSTEM[Current realization and ROS orchestration] --> SELECT
-    SELECT --> SVALID{Selection valid?}
-    SVALID -- no --> TERMINAL[No change, unsupported, clarification, or rejection]
-    SVALID -- yes --> VALUECTX[Selected records, current values, constraints, relationships]
-    VALUECTX --> VALUE[LLM value reasoning]
-    M --> VALUE
-    VALUE --> VVALID{Values valid?}
-    VVALID -- no --> TERMINAL
-    VVALID -- yes --> CHANGES[Validated parameter changes]
+    INPUT[Mission, active components,<br/>and parameter catalogue] --> RET[Semantic retrieval<br/>of top 10 candidates]
+    RET --> CONTEXT[Bounded model context<br/>without ranks or scores]
+    CONTEXT --> SELECT[LLM selects parameter IDs]
+    SELECT --> CHECK[Deterministic validation<br/>with one retry]
+    CHECK --> VALUE[LLM generates values<br/>for selected IDs only]
+    VALUE --> OUT[Validated parameter changes]
 ```
 
 ## 5. Sparse plan validation and configuration application
 
 ```mermaid
 flowchart TD
-    CR[Capability realization values] --> MERGE[Sparse plan merge]
-    PC[Validated parameter changes] --> MERGE
-    MERGE --> CONFLICT{Claims agree?}
-    CONFLICT -- no --> REJECT[Reject plan]
-    CONFLICT -- yes --> OBJECTIVE[Existence, type, bounds, renderability]
-    OBJECTIVE --> VALID{All checks pass?}
-    VALID -- no --> REJECT
-    VALID -- yes --> BASE[Overlay sparse plan on complete baseline]
-    BASE --> JINJA[Strict predefined templates]
-    JINJA --> STATIC[Launch syntax and ROS parameter structure checks]
-    STATIC --> BUNDLE[Generated launch/YAML bundle with hashes and provenance]
+    CAP[Capability realization] --> MERGE[Sparse configuration plan]
+    PARAM[Validated parameter changes] --> MERGE
+    MERGE --> VALIDATE[Conflict, type, bounds,<br/>and renderability checks]
+    VALIDATE --> APPLY[Overlay on complete baseline]
+    APPLY --> RENDER[Render and structurally validate<br/>launch and YAML files]
+    RENDER --> BUNDLE[Configuration bundle<br/>with hashes and provenance]
 ```
 
 ## 6. Representative end-to-end request
@@ -128,21 +70,9 @@ flowchart TD
 ```mermaid
 flowchart TD
     U[Build a map using KISS-ICP and limit its range to 20 metres]
-    U --> C1[Select mapping capability]
-    U --> C2[Select KISS-ICP odometry implementation]
-    C1 --> R[Deterministic realization]
-    C2 --> R
-    R --> R1[Activate mapping implementation]
-    R --> R2[Activate KISS-ICP]
-    R --> R3[Activate scan-to-point-cloud dependency]
-    R --> R4[Displace kinematic ICP]
-
-    R --> O[Verify required ROS interface chain]
-    O --> P[Retrieve KISS-ICP range candidates]
-    U --> P
-    P --> S[Select maximum-range parameter]
-    S --> V[Reason new value: 20 metres]
-    V --> PLAN[Merge capability and parameter values]
-    PLAN --> CHECK[Validate identifiers, old value, type, bounds, and conflicts]
-    CHECK --> APPLY[Overlay on baseline and render predefined artifacts]
+    U --> CAP[Select Cartographer mapping<br/>and KISS-ICP odometry]
+    CAP --> REAL[Activate required components<br/>and dependencies]
+    REAL --> PARAM[Select KISS-ICP maximum range<br/>and assign 20 metres]
+    PARAM --> CHECK[Validate and merge<br/>the sparse plan]
+    CHECK --> APPLY[Render the ROS 2<br/>configuration bundle]
 ```

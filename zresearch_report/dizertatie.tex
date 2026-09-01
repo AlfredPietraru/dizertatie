@@ -23,6 +23,8 @@
 \counterwithout{equation}{chapter} % no chapter number in equation labels
 
 \usepackage{booktabs} % for much better looking tables
+\usepackage{xcolor}
+\usepackage{listings}
 \usepackage{url} % Useful for inserting web links nicely
 \usepackage[bookmarks,unicode,hidelinks]{hyperref}
 
@@ -33,6 +35,23 @@
 \usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
 \usepackage{enumitem}
 \setlist{noitemsep}
+
+\lstdefinestyle{annexcode}{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{gray!8},
+  frame=single,
+  rulecolor=\color{gray!45},
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  aboveskip=0.5em,
+  belowskip=0.8em,
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
 
 %%% HEADERS & FOOTERS
 \usepackage{fancyhdr}
@@ -164,14 +183,17 @@ The prototype derives 109 writable configuration slots from the AntRobot workspa
 
 \AbstractPage{}
 
-\input{sections/introduction}
-\input{sections/problem_analysis}
-\input{sections/sota}
+% \input{sections/introduction}
+% \input{sections/problem_analysis}
+% \input{sections/sota}
 \input{sections/proposed_solution}
 \input{sections/implementation_details}
 \input{sections/dataset_results}
-\input{sections/next_activities}
 \input{sections/conclusions}
+
+\begin{appendices}
+\input{sections/annex_llm_prompts}
+\end{appendices}
 
 \nocite{*}
 \bibliographystyle{IEEEtran}
