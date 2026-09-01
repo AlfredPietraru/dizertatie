@@ -180,6 +180,9 @@ class MissionInterpretationTests(unittest.TestCase):
         self.assertIn("nodes.joint_state_estimator.publish_frequency", identifiers)
         self.assertIn("nodes.kinematic_icp.max_range", identifiers)
         self.assertIn("nodes.rdrive_node.wheel_radius", identifiers)
+        self.assertNotIn("launch.launch_kiss_icp", identifiers)
+        self.assertNotIn("launch.launch_kinematic_icp", identifiers)
+        self.assertIn("nodes.kiss_icp.publish_odom_tf", identifiers)
 
         parameters = {item.parameter_id: item for item in visible.parameters}
         wheel_radius_relationships = parameters[

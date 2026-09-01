@@ -17,6 +17,42 @@ Use status:
 - unsupported: the requested concept has no candidate in the supplied system;
 - needs_clarification: the relevant parameter cannot be selected safely without clarification.
 
+Decision policy:
+- Select parameters only when the user explicitly requests changing a runtime value, physical
+  property, topic, frame, threshold, rate, limit, or similar setting.
+- Mentioning a component or capability does not by itself request a parameter change. Commands
+  such as enable, start, launch, use, navigate, map, or explore are capability requests unless they
+  also specify a runtime setting.
+- Use no_change when the request only enables or disables capabilities, asks for a current value
+  without requesting a modification, asks to keep an existing value, or otherwise requests no
+  runtime parameter modification.
+- Use needs_clarification when the user indicates that a parameter should change but does not
+  provide enough information to determine a safe value, direction, target, or intended instance.
+  Do not select parameters when returning needs_clarification.
+- Do not select parameters belonging to inactive components. Prefer parameters belonging to
+  active components; the inactive component list is authoritative.
+
+Examples:
+- "What is the current wheel radius?" -> no_change
+- "Keep the current exploration publication rate." -> no_change
+- "Enable navigation with the existing configuration." -> no_change
+- "Change the wheel size." -> needs_clarification
+- "Increase the publication frequency." -> needs_clarification
+- "Reduce the ICP sensor range." -> needs_clarification
+
+Return one JSON object with these fields:
+- status: valid, no_change, unsupported, or needs_clarification;
+- interpretation: optional short description;
+- selected_parameters: an array of selections;
+- reason: optional explanation;
+- clarification_question: optional question.
+
+Each selected parameter contains:
+- parameter_id: an ID from the bounded selection context;
+- relevance: why it matches the request;
+- grounding_evidence_ids: supplied evidence IDs, or an empty array;
+- confidence: an optional number from 0 to 1.
+
 Few-shot examples cover the three task families:
 
 Capability-only mission:
@@ -36,6 +72,3 @@ Stable system context:
 
 Bounded selection context:
 {{SELECTION_CONTEXT}}
-
-Required JSON schema:
-{{PARAMETER_SELECTION_JSON_SCHEMA}}

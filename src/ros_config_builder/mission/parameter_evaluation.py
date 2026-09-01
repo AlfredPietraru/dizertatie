@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -99,13 +100,14 @@ def evaluate_parameter_reasoning(
     system_context: dict[str, Any] | None = None,
     wiring_bindings: dict[str, dict[str, Any]] | None = None,
     include_no_change: bool = False,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Score each AI boundary independently; execution errors are always failures."""
     all_cases = [json.loads(line) for line in Path(dataset_path).read_text(encoding="utf-8").splitlines()
                  if line.strip()]
     cases = [case for case in all_cases if _is_parameter_case(case, include_no_change=include_no_change)]
     records: list[dict[str, Any]] = []
-    for case in cases:
+    for case_index, case in enumerate(cases, 1):
         expected = _expected_changes(case)
         expected_ids = set(expected)
         expected_status = _expected_status(case, expected)
@@ -117,6 +119,12 @@ def evaluate_parameter_reasoning(
             "selection": _selection_scores(expected_ids, set()), "value_comparison": None,
             "outcome_correct": False, "end_to_end_correct": False,
         }
+        if progress is not None:
+            progress({
+                "event": "case_started", "index": case_index,
+                "total": len(cases), "id": case["id"], "mission": case["mission"],
+                "expected_result": {"status": expected_status, "changes": expected},
+            })
         try:
             result = reasoner.reason(
                 case["mission"], catalogue, system_context=system_context,
@@ -125,6 +133,13 @@ def evaluate_parameter_reasoning(
         except Exception as error:
             record["error"] = f"{type(error).__name__}: {error}"
             records.append(record)
+            if progress is not None:
+                progress({
+                    "event": "case_finished", "index": case_index,
+                    "total": len(cases), "id": case["id"], "status": "error",
+                    "error": record["error"], "end_to_end_correct": False,
+                    "record": record,
+                })
             continue
         record["predicted_status"] = result.status
         ranked = [item.parameter_id for item in result.retrieval.candidates]
@@ -169,6 +184,13 @@ def evaluate_parameter_reasoning(
             and record["value_comparison"]["exact"]
         )
         records.append(record)
+        if progress is not None:
+            progress({
+                "event": "case_finished", "index": case_index,
+                "total": len(cases), "id": case["id"], "status": result.status,
+                "error": None, "end_to_end_correct": record["end_to_end_correct"],
+                "record": record,
+            })
 
     expected_parameter_records = [item for item in records if item["expected_changes"]]
     retrieval_records = [item for item in expected_parameter_records if item["retrieval"] is not None]

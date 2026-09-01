@@ -333,7 +333,6 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
                 reasoning = application.parameter_reasoner.reason(
                     case["mission"], catalogue,
                     system_context=build_parameter_selection_system_context(
-                        realization.model_dump(mode="json"),
                         orchestration.model_dump(mode="json"),
                     ),
                     wiring_bindings=application.manifest.get("wiring_bindings", {}),

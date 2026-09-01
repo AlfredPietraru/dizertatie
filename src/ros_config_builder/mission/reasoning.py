@@ -18,7 +18,6 @@ from .schema import (
 
 
 SELECTION_CONTEXT_PLACEHOLDER = "{{SELECTION_CONTEXT}}"
-SELECTION_SCHEMA_PLACEHOLDER = "{{PARAMETER_SELECTION_JSON_SCHEMA}}"
 SYSTEM_CONTEXT_PLACEHOLDER = "{{SYSTEM_CONTEXT}}"
 VALUE_CONTEXT_PLACEHOLDER = "{{VALUE_CONTEXT}}"
 VALUE_SCHEMA_PLACEHOLDER = "{{PARAMETER_VALUE_JSON_SCHEMA}}"
@@ -47,8 +46,6 @@ class ParameterSelectionInterpretation(MissionModel):
         if self.status == "valid":
             if not self.selected_parameters:
                 raise ValueError("valid parameter selection requires at least one selected parameter")
-            if self.reason is not None or self.clarification_question is not None:
-                raise ValueError("valid parameter selection cannot contain terminal fields")
         elif self.status == "no_change":
             if self.selected_parameters or not self.reason or self.clarification_question is not None:
                 raise ValueError("no_change requires a reason and no selected parameters")
@@ -129,33 +126,21 @@ def build_parameter_selection_prompt(
     return _replace_json_placeholders(template, {
         SELECTION_CONTEXT_PLACEHOLDER: context.model_dump(mode="json"),
         SYSTEM_CONTEXT_PLACEHOLDER: system_context or {},
-        SELECTION_SCHEMA_PLACEHOLDER: ParameterSelectionInterpretation.model_json_schema(),
     })
 
 
 def build_parameter_selection_system_context(
-    system_realization: dict[str, Any],
     ros_orchestration: dict[str, Any],
 ) -> dict[str, Any]:
     """Keep only deployment eligibility facts needed during parameter selection."""
-    capabilities = [
-        {
-            "capability": item.get("capability"),
-            "enabled": item.get("enabled"),
-            "implementation": item.get("implementation"),
-        }
-        for item in system_realization.get("capabilities", [])
-    ]
     active_components = sorted({
         item["component_id"]
         for item in ros_orchestration.get("active_components", [])
         if isinstance(item, dict) and isinstance(item.get("component_id"), str)
     })
     return {
-        "capabilities": capabilities,
         "active_components": active_components,
         "inactive_components": sorted(ros_orchestration.get("inactive_components", [])),
-        "orchestration_status": ros_orchestration.get("status"),
     }
 
 

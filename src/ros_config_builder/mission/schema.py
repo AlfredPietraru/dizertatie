@@ -872,7 +872,7 @@ def derive_parameter_catalogue(
     evidence_by_id: dict[str, dict[str, Any]] | None = None,
     semantic_enrichments: dict[str, dict[str, Any]] | None = None,
 ) -> ParameterCatalogue:
-    """Expose every extracted ROS parameter and launch argument to semantic reasoning."""
+    """Expose runtime parameters while leaving deployment toggles to capability realization."""
     evidence_by_id = evidence_by_id or {}
     semantic_enrichments = semantic_enrichments or {}
     parameters: list[AvailableParameter] = []
@@ -894,6 +894,12 @@ def derive_parameter_catalogue(
         })
     launch_items = template_schema.get("launch_arguments", [])
     for item in launch_items:
+        if item.get("value_type") == "boolean":
+            # Boolean launch arguments enable or disable deployment components.
+            # The capability stage owns those decisions and realizes their values
+            # deterministically; exposing them again invites the parameter LLM to
+            # duplicate or contradict an already-resolved capability selection.
+            continue
         semantics = item.get("semantic_information") or {}
         value_range = item.get("range") or {}
         name = item["name"].replace("_", " ")

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from ros_config_builder import (
-    CapabilitySelections, ParameterReasoner, SemanticEnricher,
+    CapabilitySelections, ParameterReasoner, ParameterSelectionInterpretation, SemanticEnricher,
     build_parameter_evidence, build_system_model, build_template_configuration_schema,
     derive_parameter_catalogue, enrichment_by_parameter_id, evaluate_parameter_reasoning,
     evidence_by_parameter_id, extract_launch_files, extract_package_metadata,
@@ -211,6 +211,8 @@ class ParameterAIPipelineTests(unittest.TestCase):
         )
         self.assertIn('Stable system context:\n{"active_components":["rdrive_node"]}', prompt)
         self.assertIn('"semantic_metadata":{"aliases":', prompt)
+        self.assertNotIn("{{PARAMETER_SELECTION_JSON_SCHEMA}}", prompt)
+        self.assertNotIn('"$defs"', prompt)
 
     def test_llm_semantic_variant_requires_enrichment(self) -> None:
         with self.assertRaisesRegex(ValueError, "semantic-enrichment artifact"):
@@ -266,6 +268,19 @@ class ParameterAIPipelineTests(unittest.TestCase):
         self.assertIn("validation_error", user_prompts[1])
         self.assertIn("not.in.context", user_prompts[1])
 
+    def test_valid_selection_tolerates_terminal_explanation_fields(self) -> None:
+        selection = ParameterSelectionInterpretation.model_validate({
+            "status": "valid",
+            "selected_parameters": [{
+                "parameter_id": "nodes.rdrive_node.wheel_radius",
+                "relevance": "The requested wheel geometry parameter.",
+            }],
+            "reason": "The request identifies a configurable parameter.",
+            "clarification_question": "This field is ignored for a valid selection.",
+        })
+        self.assertEqual(selection.status, "valid")
+        self.assertEqual(len(selection.selected_parameters), 1)
+
     def test_value_validation_retries_once_and_returns_only_final_result(self) -> None:
         selection = json.dumps({
             "status": "valid",
@@ -320,16 +335,22 @@ class ParameterAIPipelineTests(unittest.TestCase):
                 {"parameter_id": "nodes.joint_state_estimator.wheel_radius", "value": 0.04},
             ]}},
         }
+        progress = []
         with tempfile.TemporaryDirectory() as directory:
             dataset = Path(directory) / "cases.jsonl"
             dataset.write_text(json.dumps(case) + "\n")
             report = evaluate_parameter_reasoning(
                 dataset, self._wheel_reasoner(), self.catalogue,
                 wiring_bindings=self.manifest["wiring_bindings"],
+                progress=progress.append,
             )
         self.assertEqual(report["metrics"]["selection_exact_set_accuracy"], 1.0)
         self.assertEqual(report["metrics"]["value_accuracy"], 1.0)
         self.assertEqual(report["metrics"]["end_to_end_accuracy"], 1.0)
+        self.assertEqual(
+            [event["event"] for event in progress],
+            ["case_started", "case_finished"],
+        )
 
     def test_parameter_task_dataset_has_valid_gold_ids_and_types(self) -> None:
         tasks = load_parameter_reasoning_tasks(
@@ -342,13 +363,6 @@ class ParameterAIPipelineTests(unittest.TestCase):
     def test_parameter_selection_system_context_omits_orchestration_detail(self) -> None:
         context = build_parameter_selection_system_context(
             {
-                "capabilities": [{
-                    "capability": "odometry", "enabled": True,
-                    "implementation": "kiss_icp", "reason": "explicit_selection",
-                }],
-                "components": [{"component_id": "kiss_icp", "claims": ["large"]}],
-            },
-            {
                 "status": "valid",
                 "active_components": [{
                     "component_id": "kiss_icp", "interfaces": [{"large": "detail"}],
@@ -358,13 +372,8 @@ class ParameterAIPipelineTests(unittest.TestCase):
             },
         )
         self.assertEqual(context, {
-            "capabilities": [{
-                "capability": "odometry", "enabled": True,
-                "implementation": "kiss_icp",
-            }],
             "active_components": ["kiss_icp"],
             "inactive_components": ["kinematic_icp"],
-            "orchestration_status": "valid",
         })
 
 

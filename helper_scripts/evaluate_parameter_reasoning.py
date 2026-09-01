@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import time
 from pathlib import Path
 
 from ros_config_builder.integration import SystemModel
@@ -27,6 +28,142 @@ from ros_config_builder.templating import TemplateConfigurationSchema, TemplateM
 
 
 VARIANTS = ("names_values", "semantic", "source", "system", "graph", "llm_semantic")
+
+
+class _LoggingBackend:
+    """Report each model call, including an internal validation-repair call."""
+
+    def __init__(self, backend: OllamaBackend, stage: str) -> None:
+        self.backend = backend
+        self.stage = stage
+        self.calls = 0
+        self.records: list[dict[str, object]] = []
+
+    def __call__(self, system_prompt: str, user_prompt: str) -> str:
+        self.calls += 1
+        started = time.perf_counter()
+        record: dict[str, object] = {
+            "stage": self.stage, "call": self.calls, "started_at": started,
+            "system_prompt": system_prompt, "user_prompt": user_prompt,
+            "raw_response": None, "backend_error": None,
+        }
+        print(f"  [{self.stage}] LLM call {self.calls} started", flush=True)
+        try:
+            result = self.backend(system_prompt, user_prompt)
+        except Exception as error:
+            record["backend_error"] = f"{type(error).__name__}: {error}"
+            self.records.append(record)
+            elapsed = time.perf_counter() - started
+            print(
+                f"  [{self.stage}] LLM call {self.calls} failed after {elapsed:.1f}s: "
+                f"{type(error).__name__}: {error}",
+                flush=True,
+            )
+            raise
+        record["raw_response"] = result
+        self.records.append(record)
+        elapsed = time.perf_counter() - started
+        print(f"  [{self.stage}] LLM call {self.calls} completed in {elapsed:.1f}s", flush=True)
+        return result
+
+
+def _failure_explanation(record: dict[str, object]) -> str:
+    lines = []
+    if record.get("error"):
+        lines.extend(["Runtime or validation error:", str(record["error"])])
+    if not record.get("outcome_correct"):
+        lines.extend([
+            "Outcome mismatch:",
+            f"expected_status={record.get('expected_status')}",
+            f"predicted_status={record.get('predicted_status')}",
+        ])
+    selection = record.get("selection")
+    if isinstance(selection, dict) and not selection.get("exact"):
+        lines.extend([
+            "Selection mismatch:",
+            f"missed={json.dumps(selection.get('missed', []), sort_keys=True)}",
+            f"over_selected={json.dumps(selection.get('over_selected', []), sort_keys=True)}",
+        ])
+    values = record.get("value_comparison")
+    if isinstance(values, dict) and not values.get("exact"):
+        incorrect = [item for item in values.get("items", []) if not item.get("correct")]
+        lines.extend([
+            "Value mismatch:",
+            f"incorrect={json.dumps(incorrect, sort_keys=True)}",
+            f"extra_values={json.dumps(values.get('extra_values', []), sort_keys=True)}",
+        ])
+    return "\n".join(lines).strip() + "\n"
+
+
+def _progress_logger(
+    variant: str,
+    output: Path,
+    selection_backend: _LoggingBackend,
+    value_backend: _LoggingBackend,
+):
+    counts = {"completed": 0, "errors": 0, "correct": 0}
+    call_offsets = {"parameter_selection": 0, "parameter_value": 0}
+    expected_result: dict[str, object] = {}
+
+    def log(event: dict[str, object]) -> None:
+        if event["event"] == "case_started":
+            call_offsets["parameter_selection"] = len(selection_backend.records)
+            call_offsets["parameter_value"] = len(value_backend.records)
+            expected_result.clear()
+            expected_result.update(event["expected_result"])
+            print(
+                f"[{variant}] case {event['index']}/{event['total']} "
+                f"{event['id']} started: {event['mission']}",
+                flush=True,
+            )
+            return
+        counts["completed"] += 1
+        counts["errors"] += int(event["status"] == "error")
+        counts["correct"] += int(bool(event["end_to_end_correct"]))
+        if not event["end_to_end_correct"]:
+            record = event["record"]
+            selection_calls = selection_backend.records[call_offsets["parameter_selection"]:]
+            value_calls = value_backend.records[call_offsets["parameter_value"]:]
+            selection_failed = (
+                not bool(record.get("outcome_correct"))
+                or not bool(record.get("selection", {}).get("exact"))
+            )
+            relevant_calls = selection_calls if selection_failed or not value_calls else value_calls
+            if not relevant_calls:
+                relevant_calls = selection_calls + value_calls
+            failure = output / "failures" / str(event["id"])
+            failure.mkdir(parents=True, exist_ok=True)
+            if relevant_calls:
+                final_call = relevant_calls[-1]
+                failure.joinpath("system_prompt.txt").write_text(
+                    str(final_call["system_prompt"]), encoding="utf-8",
+                )
+                failure.joinpath("user_prompt.txt").write_text(
+                    str(final_call["user_prompt"]), encoding="utf-8",
+                )
+            else:
+                failure.joinpath("system_prompt.txt").write_text(
+                    "No LLM call was reached.\n", encoding="utf-8",
+                )
+                failure.joinpath("user_prompt.txt").write_text(
+                    "No LLM call was reached.\n", encoding="utf-8",
+                )
+            failure.joinpath("expected_result.json").write_text(
+                json.dumps(expected_result, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+            )
+            failure.joinpath("error.txt").write_text(
+                _failure_explanation(record), encoding="utf-8",
+            )
+        detail = f" error={event['error']}" if event["error"] else ""
+        print(
+            f"[{variant}] case {event['index']}/{event['total']} {event['id']} finished: "
+            f"status={event['status']} end_to_end_correct={event['end_to_end_correct']} "
+            f"running_completed={counts['completed']} running_correct={counts['correct']} "
+            f"running_errors={counts['errors']}{detail}",
+            flush=True,
+        )
+
+    return log
 
 
 def _digest(path: Path) -> str:
@@ -105,12 +242,12 @@ def main() -> int:
                 f"{len(pending)} parameter tasks still require human review; "
                 "review them or pass --allow-pending-review for a development-only run"
             )
-    selection_backend = OllamaBackend(
+    selection_backend = _LoggingBackend(OllamaBackend(
         host=args.host, model=args.model, response_model=ParameterSelectionInterpretation,
-    )
-    value_backend = OllamaBackend(
+    ), "parameter_selection")
+    value_backend = _LoggingBackend(OllamaBackend(
         host=args.host, model=args.model, response_model=ParameterValueInterpretation,
-    )
+    ), "parameter_value")
     variants = args.context_variant or list(VARIANTS)
     summaries = {}
     for variant in variants:
@@ -123,11 +260,13 @@ def main() -> int:
         report = evaluate_parameter_reasoning(
             dataset, reasoner, catalogue,
             system_context=build_parameter_selection_system_context(
-                realization.model_dump(mode="json"),
                 orchestration.model_dump(mode="json"),
             ),
             wiring_bindings=manifest.get("wiring_bindings", {}),
             include_no_change=args.include_no_change,
+            progress=_progress_logger(
+                variant, output, selection_backend, value_backend,
+            ),
         )
         write_parameter_evaluation_report(report, output / variant)
         summaries[variant] = report["metrics"]

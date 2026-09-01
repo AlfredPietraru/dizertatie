@@ -86,7 +86,6 @@ def main() -> int:
     )
     selection_context = build_selection_context(retrieval, catalogue)
     system_context = build_parameter_selection_system_context(
-        realization.model_dump(mode="json"),
         orchestration.model_dump(mode="json"),
     )
     prompt_path = configuration.resolve(configuration.parameter_selection_prompt)
