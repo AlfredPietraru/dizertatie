@@ -30,7 +30,6 @@ class ReasoningBackend(Protocol):
 class SelectedParameter(MissionModel):
     parameter_id: str
     relevance: str = Field(min_length=3)
-    grounding_evidence_ids: list[str] = Field(default_factory=list)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
@@ -66,7 +65,6 @@ class ProposedParameterChange(MissionModel):
     new_value: RendererValue
     reason: str = Field(min_length=3)
     request_evidence: str | None = None
-    grounding_evidence_ids: list[str] = Field(default_factory=list)
 
 
 class ParameterValueInterpretation(MissionModel):
@@ -192,27 +190,9 @@ def validate_parameter_selection(
     context: SelectionContext,
 ) -> None:
     supplied = set(context.included_parameter_ids)
-    evidence_ids = {
-        item.get("evidence_id")
-        for record in context.records
-        for field in ("declarations", "usages")
-        for item in (record.get("source_evidence", {}).get(field, []))
-        if isinstance(item, dict)
-    } | {
-        item.get("evidence_id")
-        for record in context.records
-        for item in record.get("ros_interfaces", [])
-        if isinstance(item, dict)
-    }
     unknown = sorted({item.parameter_id for item in selection.selected_parameters} - supplied)
     if unknown:
         raise ValueError(f"parameter selection contains IDs absent from its context: {unknown}")
-    invented_evidence = sorted({
-        evidence_id for item in selection.selected_parameters
-        for evidence_id in item.grounding_evidence_ids if evidence_id not in evidence_ids
-    })
-    if invented_evidence:
-        raise ValueError(f"parameter selection cites unknown evidence: {invented_evidence}")
 
 
 def validate_parameter_values(

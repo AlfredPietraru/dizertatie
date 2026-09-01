@@ -900,6 +900,9 @@ def derive_parameter_catalogue(
             # deterministically; exposing them again invites the parameter LLM to
             # duplicate or contradict an already-resolved capability selection.
             continue
+        affected_components = set(item.get("affected_components", []))
+        if affected_components and not affected_components & realization.active_component_ids:
+            continue
         semantics = item.get("semantic_information") or {}
         value_range = item.get("range") or {}
         name = item["name"].replace("_", " ")
@@ -926,6 +929,8 @@ def derive_parameter_catalogue(
             llm_semantic_metadata=llm_metadata(enrichment),
         ))
     for component_id, items in sorted(template_schema.get("node_parameters", {}).items()):
+        if component_id not in realization.active_component_ids:
+            continue
         for item in items:
             semantics = item.get("semantic_information") or {}
             value_range = item.get("range") or {}
@@ -954,6 +959,18 @@ def derive_parameter_catalogue(
                 semantic_confidence=enrichment.get("confidence"),
                 llm_semantic_metadata=llm_metadata(enrichment),
             ))
+    available_ids = {parameter.parameter_id for parameter in parameters}
+    for parameter in parameters:
+        parameter.relationships = [
+            relationship for relationship in parameter.relationships
+            if relationship.get("target") in available_ids
+        ]
+        if parameter.llm_semantic_metadata is not None:
+            parameter.llm_semantic_metadata.relationships = [
+                relationship for relationship in parameter.llm_semantic_metadata.relationships
+                if relationship.target_parameter_id in available_ids
+            ]
+
     by_name: dict[str, list[str]] = {}
     for parameter in parameters:
         short_name = parameter.parameter_id.rsplit(".", 1)[-1]

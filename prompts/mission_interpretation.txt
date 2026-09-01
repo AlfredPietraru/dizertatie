@@ -25,6 +25,29 @@ Sparse-selection rules:
   retrieval, a bounded-context parameter-selection call, and a separate value-reasoning call.
   A supported tuning phrase does not make the capability interpretation unsupported.
 
+Explicit-request preservation:
+- Extract every capability explicitly requested by the operator, even when another selected
+  capability deterministically requires it.
+- Dependency resolution happens after this interpretation stage. Never omit an explicitly
+  requested capability because the registry will derive it as a dependency.
+- "map", "mapping", "build a map", and "create a map" explicitly request mapping.
+- "explore", "autonomous exploration", and "explore unknown space" explicitly request
+  exploration.
+
+Implementation-selection discipline:
+- Do not emit an implementation merely because it is the capability's default, its only
+  available implementation, or the implementation used by the registry.
+- Emit an implementation only when the operator names it or an explicit technical requirement
+  distinguishes it from other implementations.
+- "autonomous exploration" names the exploration capability; it does not name explore_lite.
+- When no implementation is explicitly selected, leave implementation and selection_basis null.
+
+No prerequisite inference:
+- Do not add odometry, navigation, mapping, or another operational prerequisite unless the
+  operator explicitly requests it.
+- Deterministic capability realization handles dependencies and baseline components.
+- Preserve explicit requests, but do not invent unstated prerequisites.
+
 Use status "unsupported" when the requested capability or implementation is absent from the
 catalogue. Use "needs_clarification" only when ambiguity prevents a safe supported choice;
 unmentioned options are not ambiguity. A valid result requires capabilities. Unsupported and
@@ -43,6 +66,9 @@ Output: {"status":"valid","capabilities":{"odometry":{"enabled":true,"implementa
 
 Mission: Map using KISS-ICP and limit its range to 20 metres.
 Output: {"status":"valid","capabilities":{"mapping":{"enabled":true,"implementation":null,"selection_basis":null},"odometry":{"enabled":true,"implementation":"kiss_icp","selection_basis":"explicit"}}}
+
+Mission: Autonomously explore an unknown environment while building its map.
+Output: {"status":"valid","capabilities":{"mapping":{"enabled":true,"implementation":null,"selection_basis":null},"exploration":{"enabled":true,"implementation":null,"selection_basis":null}}}
 
 Mission: Map using ORB-SLAM.
 Output: {"status":"unsupported","capabilities":null,"reason":"ORB-SLAM is not present in the supported AntRobot capability registry.","clarification_question":null}

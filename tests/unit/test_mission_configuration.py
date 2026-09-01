@@ -178,7 +178,7 @@ class MissionInterpretationTests(unittest.TestCase):
         identifiers = {item.parameter_id for item in visible.parameters}
         self.assertIn("nodes.kiss_icp.max_range", identifiers)
         self.assertIn("nodes.joint_state_estimator.publish_frequency", identifiers)
-        self.assertIn("nodes.kinematic_icp.max_range", identifiers)
+        self.assertNotIn("nodes.kinematic_icp.max_range", identifiers)
         self.assertIn("nodes.rdrive_node.wheel_radius", identifiers)
         self.assertNotIn("launch.launch_kiss_icp", identifiers)
         self.assertNotIn("launch.launch_kinematic_icp", identifiers)
@@ -213,9 +213,8 @@ class MissionInterpretationTests(unittest.TestCase):
         inactive_component_change = [ParameterChange.model_validate({
             "parameter_id": "nodes.kinematic_icp.max_range", "value": 20.0,
         })]
-        self.assertEqual(validate_parameter_changes(inactive_component_change, catalogue), {
-            "nodes.kinematic_icp.max_range": 20.0,
-        })
+        with self.assertRaisesRegex(ValueError, "configuration value is not available"):
+            validate_parameter_changes(inactive_component_change, catalogue)
 
     def test_required_ros_connections_are_projected_with_partial_external_status(self) -> None:
         capabilities = CapabilitySelections.model_validate({"odometry": {

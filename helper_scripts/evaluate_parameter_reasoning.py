@@ -11,9 +11,10 @@ from pathlib import Path
 
 from ros_config_builder.integration import SystemModel
 from ros_config_builder.mission import (
-    CapabilitySelections, OllamaBackend, ParameterReasoner,
+    CapabilitySelections, MissionInterpretation, MissionInterpreter, OllamaBackend, ParameterReasoner,
     ParameterSelectionInterpretation, ParameterValueInterpretation,
-    derive_parameter_catalogue, enrichment_by_parameter_id, evaluate_parameter_reasoning,
+    RealizedComponent, SystemRealization, build_interpretation_prompt, derive_parameter_catalogue,
+    enrichment_by_parameter_id, evaluate_parameter_reasoning,
     build_parameter_selection_system_context,
     evidence_by_parameter_id, load_capability_registry, load_parameter_evidence_artifact,
     load_parameter_reasoning_tasks, load_semantic_enrichment_artifact,
@@ -95,18 +96,48 @@ def _failure_explanation(record: dict[str, object]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def _pretty_prompt_for_log(prompt: str) -> str:
+    """Pretty-print embedded JSON blocks in persisted prompts, never runtime prompts."""
+    decoder = json.JSONDecoder()
+    for marker in (
+        "Stable system context:\n",
+        "Bounded selection context:\n",
+        "Selected parameter context:\n",
+        "Required JSON schema:\n",
+    ):
+        search_from = 0
+        while True:
+            marker_index = prompt.find(marker, search_from)
+            if marker_index < 0:
+                break
+            value_start = marker_index + len(marker)
+            try:
+                value, consumed = decoder.raw_decode(prompt[value_start:])
+            except json.JSONDecodeError:
+                search_from = value_start
+                continue
+            rendered = json.dumps(value, indent=2, sort_keys=True)
+            prompt = prompt[:value_start] + rendered + prompt[value_start + consumed:]
+            search_from = value_start + len(rendered)
+    return prompt
+
+
 def _progress_logger(
     variant: str,
     output: Path,
     selection_backend: _LoggingBackend,
     value_backend: _LoggingBackend,
+    capability_backend: _LoggingBackend | None = None,
 ):
     counts = {"completed": 0, "errors": 0, "correct": 0}
     call_offsets = {"parameter_selection": 0, "parameter_value": 0}
+    capability_offset = 0
     expected_result: dict[str, object] = {}
 
     def log(event: dict[str, object]) -> None:
+        nonlocal capability_offset
         if event["event"] == "case_started":
+            capability_offset = len(capability_backend.records) if capability_backend else 0
             call_offsets["parameter_selection"] = len(selection_backend.records)
             call_offsets["parameter_value"] = len(value_backend.records)
             expected_result.clear()
@@ -130,13 +161,16 @@ def _progress_logger(
             )
             relevant_calls = selection_calls if selection_failed or not value_calls else value_calls
             if not relevant_calls:
-                relevant_calls = selection_calls + value_calls
+                capability_calls = (
+                    capability_backend.records[capability_offset:] if capability_backend else []
+                )
+                relevant_calls = selection_calls + value_calls + capability_calls
             failure = output / "failures" / str(event["id"])
             failure.mkdir(parents=True, exist_ok=True)
             if relevant_calls:
                 final_call = relevant_calls[-1]
                 failure.joinpath("system_prompt.txt").write_text(
-                    str(final_call["system_prompt"]), encoding="utf-8",
+                    _pretty_prompt_for_log(str(final_call["system_prompt"])), encoding="utf-8",
                 )
                 failure.joinpath("user_prompt.txt").write_text(
                     str(final_call["user_prompt"]), encoding="utf-8",
@@ -166,6 +200,92 @@ def _progress_logger(
     return log
 
 
+class _CapabilityConditionedReasoner:
+    """Build a task-specific active catalogue before parameter reasoning."""
+
+    def __init__(
+        self, reasoner: ParameterReasoner, interpreter: MissionInterpreter, *,
+        registry, schema, evidence_by_id, enrichments, system_model, manifest,
+    ) -> None:
+        self.reasoner = reasoner
+        self.interpreter = interpreter
+        self.registry = registry
+        self.schema = schema
+        self.evidence_by_id = evidence_by_id
+        self.enrichments = enrichments
+        self.system_model = system_model
+        self.manifest = manifest
+        self.context_variant = reasoner.context_variant
+
+    def reason(self, mission: str, _catalogue, **_kwargs):
+        interpretation = self.interpreter.interpret(mission)
+        capabilities = (
+            interpretation.capabilities
+            if interpretation.status == "valid" and interpretation.capabilities is not None
+            else CapabilitySelections()
+        )
+        realization = realize_capabilities(capabilities, self.registry)
+        orchestration = resolve_ros_orchestration(
+            realization, self.registry, self.system_model, self.manifest,
+        )
+        if orchestration.status == "invalid":
+            raise ValueError("task capability realization has unsatisfied ROS connections")
+        catalogue = derive_parameter_catalogue(
+            realization, self.schema, evidence_by_id=self.evidence_by_id,
+            semantic_enrichments=self.enrichments,
+        )
+        return self.reasoner.reason(
+            mission, catalogue,
+            system_context=build_parameter_selection_system_context(
+                orchestration.model_dump(mode="json"),
+            ),
+            wiring_bindings=self.manifest.get("wiring_bindings", {}),
+        )
+
+
+class _GroundTruthConditionedReasoner:
+    """Build each intrinsic catalogue from the task's frozen active-component scope."""
+
+    def __init__(
+        self, reasoner: ParameterReasoner, *, active_components_by_mission,
+        registry, schema, evidence_by_id, enrichments, system_model, manifest,
+    ) -> None:
+        self.reasoner = reasoner
+        self.active_components_by_mission = active_components_by_mission
+        self.registry = registry
+        self.schema = schema
+        self.evidence_by_id = evidence_by_id
+        self.enrichments = enrichments
+        self.system_model = system_model
+        self.manifest = manifest
+        self.context_variant = reasoner.context_variant
+
+    def reason(self, mission: str, _catalogue, **_kwargs):
+        active_components = self.active_components_by_mission.get(mission)
+        if active_components is None:
+            raise ValueError("parameter task has no frozen ground-truth active-component scope")
+        realization = SystemRealization(components=[
+            RealizedComponent(
+                component_id=component_id, enabled=True, reason="selected_implementation",
+            )
+            for component_id in active_components
+        ])
+        orchestration = resolve_ros_orchestration(
+            realization, self.registry, self.system_model, self.manifest,
+        )
+        catalogue = derive_parameter_catalogue(
+            realization, self.schema, evidence_by_id=self.evidence_by_id,
+            semantic_enrichments=self.enrichments,
+        )
+        return self.reasoner.reason(
+            mission, catalogue,
+            system_context=build_parameter_selection_system_context(
+                orchestration.model_dump(mode="json"),
+            ),
+            wiring_bindings=self.manifest.get("wiring_bindings", {}),
+        )
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -181,6 +301,8 @@ def main() -> int:
     parser.add_argument("--host", default=None)
     parser.add_argument("--selection-prompt", type=Path,
                         default=Path("prompts/parameter_selection.txt"))
+    parser.add_argument("--capability-prompt", type=Path,
+                        default=Path("prompts/mission_interpretation.txt"))
     parser.add_argument("--value-prompt", type=Path,
                         default=Path("prompts/parameter_value_reasoning.txt"))
     parser.add_argument("--semantic-enrichment", type=Path, default=None)
@@ -189,6 +311,11 @@ def main() -> int:
     parser.add_argument("--graph-hops", type=int, default=1)
     parser.add_argument("--include-no-change", action="store_true")
     parser.add_argument("--allow-pending-review", action="store_true")
+    parser.add_argument(
+        "--infer-capabilities", action="store_true",
+        help=("Use the capability LLM instead of each task's frozen active_components. "
+              "Not recommended for intrinsic parameter evaluation."),
+    )
     args = parser.parse_args()
 
     workspace = args.workspace.resolve()
@@ -197,6 +324,7 @@ def main() -> int:
     dataset = resolve(args.dataset)
     output = resolve(args.output)
     selection_prompt = resolve(args.selection_prompt)
+    capability_prompt = resolve(args.capability_prompt)
     value_prompt = resolve(args.value_prompt)
     system_path = workspace / "artifacts/ros_system_model/ros_system_model.json"
     schema_path = workspace / "artifacts/template_configuration/template_configuration_schema.json"
@@ -235,7 +363,7 @@ def main() -> int:
         semantic_enrichments=enrichments,
     )
     if dataset.name == "parameter_reasoning_tasks_v1.jsonl":
-        tasks = load_parameter_reasoning_tasks(dataset, catalogue)
+        tasks = load_parameter_reasoning_tasks(dataset)
         pending = [task.id for task in tasks if task.review_status != "human_verified"]
         if pending and not args.allow_pending_review:
             parser.error(
@@ -248,6 +376,19 @@ def main() -> int:
     value_backend = _LoggingBackend(OllamaBackend(
         host=args.host, model=args.model, response_model=ParameterValueInterpretation,
     ), "parameter_value")
+    capability_backend = None
+    capability_interpreter = None
+    if args.infer_capabilities:
+        capability_backend = _LoggingBackend(OllamaBackend(
+            host=args.host, model=args.model, response_model=MissionInterpretation,
+        ), "capability_interpretation")
+        capability_interpreter = MissionInterpreter(
+            capability_backend,
+            system_prompt=build_interpretation_prompt(
+                capability_prompt.read_text(encoding="utf-8"), registry,
+            ),
+            registry=registry,
+        )
     variants = args.context_variant or list(VARIANTS)
     summaries = {}
     for variant in variants:
@@ -257,15 +398,30 @@ def main() -> int:
             value_prompt_template=value_prompt.read_text(encoding="utf-8"),
             context_variant=variant, top_k=args.top_k, graph_hops=args.graph_hops,
         )
+        if args.infer_capabilities:
+            assert capability_interpreter is not None
+            conditioned_reasoner = _CapabilityConditionedReasoner(
+                reasoner, capability_interpreter, registry=registry, schema=schema,
+                evidence_by_id=evidence_by_parameter_id(evidence), enrichments=enrichments,
+                system_model=system_model, manifest=manifest,
+            )
+        else:
+            if dataset.name != "parameter_reasoning_tasks_v1.jsonl":
+                parser.error("ground-truth component scope requires parameter_reasoning_tasks_v1.jsonl")
+            conditioned_reasoner = _GroundTruthConditionedReasoner(
+                reasoner,
+                active_components_by_mission={
+                    task.mission: task.expected.active_components for task in tasks
+                },
+                registry=registry, schema=schema,
+                evidence_by_id=evidence_by_parameter_id(evidence), enrichments=enrichments,
+                system_model=system_model, manifest=manifest,
+            )
         report = evaluate_parameter_reasoning(
-            dataset, reasoner, catalogue,
-            system_context=build_parameter_selection_system_context(
-                orchestration.model_dump(mode="json"),
-            ),
-            wiring_bindings=manifest.get("wiring_bindings", {}),
+            dataset, conditioned_reasoner, catalogue,
             include_no_change=args.include_no_change,
             progress=_progress_logger(
-                variant, output, selection_backend, value_backend,
+                variant, output, selection_backend, value_backend, capability_backend,
             ),
         )
         write_parameter_evaluation_report(report, output / variant)
@@ -273,9 +429,11 @@ def main() -> int:
     metadata = {
         "model": args.model, "context_variants": variants, "top_k": args.top_k,
         "graph_hops": args.graph_hops, "include_no_change": args.include_no_change,
+        "capability_source": "llm" if args.infer_capabilities else "ground_truth",
         "hashes": {str(path.relative_to(workspace)): _digest(path) for path in (
             dataset, selection_prompt, value_prompt, system_path, schema_path,
             manifest_path, evidence_path,
+            *([capability_prompt] if args.infer_capabilities else []),
             *([resolve(args.semantic_enrichment)] if args.semantic_enrichment is not None else []),
         )},
         "metrics": summaries,

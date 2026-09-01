@@ -86,6 +86,16 @@ class ParameterAIPipelineTests(unittest.TestCase):
                       if item.parameter_id == "nodes.explore.publish_rate")
         self.assertEqual(shared.affected_components, ["explore", "explore_lite_map_converter"])
 
+    def test_catalogue_excludes_parameters_from_inactive_components(self) -> None:
+        identifiers = {item.parameter_id for item in self.catalogue.parameters}
+        self.assertIn("nodes.kinematic_icp.max_range", identifiers)
+        self.assertNotIn("nodes.kiss_icp.max_range", identifiers)
+        self.assertTrue(all(
+            relationship.get("target") in identifiers
+            for parameter in self.catalogue.parameters
+            for relationship in parameter.relationships
+        ))
+
     def test_semantic_enrichment_requires_real_evidence_ids(self) -> None:
         wheel = next(item for item in self.evidence
                      if item.parameter_id == "nodes.rdrive_node.wheel_radius")
@@ -354,7 +364,7 @@ class ParameterAIPipelineTests(unittest.TestCase):
 
     def test_parameter_task_dataset_has_valid_gold_ids_and_types(self) -> None:
         tasks = load_parameter_reasoning_tasks(
-            "data/parameter_reasoning_tasks_v1.jsonl", self.catalogue,
+            "data/parameter_reasoning_tasks_v1.jsonl",
         )
         self.assertEqual(len(tasks), 40)
         self.assertEqual(sum(task.outcome == "supported" for task in tasks), 32)

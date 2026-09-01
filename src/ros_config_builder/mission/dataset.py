@@ -86,6 +86,7 @@ class ParameterReasoningGold(MissionModel):
 
 class ParameterTaskExpectation(MissionModel):
     parameter_reasoning: ParameterReasoningGold
+    active_components: list[str] = Field(min_length=1)
 
 
 class ParameterReasoningTask(MissionModel):

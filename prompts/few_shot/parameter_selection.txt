@@ -50,7 +50,6 @@ Return one JSON object with these fields:
 Each selected parameter contains:
 - parameter_id: an ID from the bounded selection context;
 - relevance: why it matches the request;
-- grounding_evidence_ids: supplied evidence IDs, or an empty array;
 - confidence: an optional number from 0 to 1.
 
 Few-shot examples cover the three task families:
@@ -61,11 +60,11 @@ Output: {"status":"no_change","interpretation":"The mission changes only a high-
 
 Parameter-only mission with a shared physical property:
 Mission: Set the physical drive-wheel radius to 6 centimetres everywhere it is used.
-Output: {"status":"valid","interpretation":"The same physical wheel radius is consumed by the drive and joint-state components.","selected_parameters":[{"parameter_id":"nodes.rdrive_node.wheel_radius","relevance":"Drive kinematics use the physical wheel radius.","grounding_evidence_ids":[],"confidence":1.0},{"parameter_id":"nodes.joint_state_estimator.wheel_radius","relevance":"The joint-state estimator uses the same physical wheel radius.","grounding_evidence_ids":[],"confidence":1.0}],"reason":null,"clarification_question":null}
+Output: {"status":"valid","interpretation":"The same physical wheel radius is consumed by the drive and joint-state components.","selected_parameters":[{"parameter_id":"nodes.rdrive_node.wheel_radius","relevance":"Drive kinematics use the physical wheel radius.","confidence":1.0},{"parameter_id":"nodes.joint_state_estimator.wheel_radius","relevance":"The joint-state estimator uses the same physical wheel radius.","confidence":1.0}],"reason":null,"clarification_question":null}
 
 Capability-and-parameter mission:
 Mission: Start autonomous exploration and publish its map at 1.5 hertz.
-Output: {"status":"valid","interpretation":"Only the explicitly requested map publication rate is a parameter change; exploration activation was handled by the capability stage.","selected_parameters":[{"parameter_id":"nodes.explore.publish_rate","relevance":"Controls the requested exploration map publication rate.","grounding_evidence_ids":[],"confidence":1.0}],"reason":null,"clarification_question":null}
+Output: {"status":"valid","interpretation":"Only the explicitly requested map publication rate is a parameter change; exploration activation was handled by the capability stage.","selected_parameters":[{"parameter_id":"nodes.explore.publish_rate","relevance":"Controls the requested exploration map publication rate.","confidence":1.0}],"reason":null,"clarification_question":null}
 
 Stable system context:
 {{SYSTEM_CONTEXT}}
