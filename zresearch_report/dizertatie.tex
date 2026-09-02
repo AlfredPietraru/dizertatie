@@ -37,7 +37,7 @@
 \setlist{noitemsep}
 
 \lstdefinestyle{annexcode}{
-  basicstyle=\ttfamily\footnotesize,
+  basicstyle=\ttfamily\tiny,
   backgroundcolor=\color{gray!8},
   frame=single,
   rulecolor=\color{gray!45},
@@ -74,7 +74,7 @@ DEPARTAMENTUL DE CALCULATOARE\\}
 \newcommand{\UniTextEN}{UNIVERSITY POLITEHNICA OF BUCHAREST \\[\HeaderLineSpace]
 FACULTY OF AUTOMATIC CONTROL AND COMPUTERS \\[\HeaderLineSpace]
 COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
-\newcommand{\DiplomaEN}{MASTER'S THESIS}
+\newcommand{\DiplomaEN}{SEMESTRIAL REPORT}
 \newcommand{\AdvisorEN}{Thesis advisor:}
 \newcommand{\BucEN}{BUCHAREST}
 
@@ -84,12 +84,7 @@ COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
 {\Large #1}  % header (university, faculty, department)
 \vspace{50pt}
 \begin{tabular}{p{6cm}p{4cm}}
-\IfFileExists{pics/upb-logo.jpg}{%
-  \includegraphics[scale=0.8]{pics/upb-logo.jpg}%
-}{} &
-\IfFileExists{pics/cs-logo.pdf}{%
-  \includegraphics[scale=0.5,trim={14cm 11cm 2cm 5cm},clip=true]{pics/cs-logo.pdf}%
-}{}
+
 \end{tabular}
 
 \vspace{105pt}
@@ -178,6 +173,7 @@ The prototype derives 109 writable configuration slots from the AntRobot workspa
 
 \begingroup
 \linespread{1}
+\setlength{\parskip}{0pt}
 \tableofcontents
 \endgroup
 
@@ -197,6 +193,9 @@ The prototype derives 109 writable configuration slots from the AntRobot workspa
 
 \nocite{*}
 \bibliographystyle{IEEEtran}
+\begingroup
+\scriptsize
 \bibliography{sections/bibliography}
+\endgroup
 
 \end{document}
