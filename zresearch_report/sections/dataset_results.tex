@@ -1,58 +1,22 @@
 \chapter{Dataset and Experimental Results}
 \label{chap:dataset-results}
 
-This chapter describes the construction of the AntRobot natural-language mission dataset, the evaluation protocol used for the language-model stages, and the complete sequence of recorded experiments. The experiments follow the implementation from the initial production-prompt baseline, through few-shot prompting and the unified orchestrated evaluator, to the simplified capability contract and bounded semantic parameter pipeline. Configuration rendering, generated YAML files, and generated launch files are outside the scored boundary; the reported results concern the three language-model stages and their deterministic validation.
+This chapter describes the construction of the AntRobot train and test mission datasets, the evaluation protocol used for the language-model stages, and the resulting experiments: capability interpretation and parameter reasoning evaluated in isolation, and the complete pipeline evaluated end to end. Configuration rendering, generated YAML files, and generated launch files are outside the scored boundary; the reported results concern the three language-model stages and their deterministic validation.
 
 \section{Dataset and Evaluation Methodology}
+\label{sec:extended-datasets}
 
 Each dataset entry began with a verified structured intent and its corresponding reference annotation. A text-generation model was then used only to express that intent in varied natural-language forms. Because the expected capabilities and parameters were defined beforehand rather than inferred by the model, the reference labels remained independent of the generated wording.
 
-The construction process consisted of the following stages:
+The current benchmark consists of two independently frozen datasets, \texttt{antrobot\_train\_mission\_dataset\_v1.jsonl} and \texttt{antrobot\_test\_mission\_dataset\_v1.jsonl}, built to separate development from held-out evaluation and to cover the full outcome space rather than supported requests alone. Fifty train seeds (\texttt{seed-101}--\texttt{seed-150}) and fifty test seeds (\texttt{seed-151}--\texttt{seed-200}) were authored from capabilities and parameters that exist in the extracted AntRobot system model, each with a canonical intent, a sparse capability annotation, any explicitly requested parameter values, and descriptive strata. Each split spans three outcomes: \texttt{supported}, \texttt{unsupported}, and \texttt{ambiguous}. Unsupported seeds are drawn from five categories -- sensor, algorithm, odometry, capability, and invalid parameter value -- and ambiguous seeds requiring clarification from five further categories -- missing numeric value, unresolved alternative, qualitative choice, conflicting requirements, and ambiguous reference.
 
-\begin{enumerate}
-    \item Fifteen seed missions were defined from capabilities and parameters that exist in the extracted AntRobot system model. Each seed contains a canonical intent, a sparse capability annotation, any explicitly requested parameter values, and descriptive strata.
-    \item For each seed, the local \texttt{qwen2.5-coder:7b} model generated ten paraphrases. The requested styles included canonical language, natural language, shorthand, imperative phrasing, negative phrasing, and multi-clause requests.
-    \item Automatic checks rejected malformed records, duplicate texts after normalization, and records that violated the candidate schema.
-    \item A semantic review checked that each paraphrase preserved the seed intent and did not add or remove requirements. Rejected variants were regenerated or replaced.
-    \item Fourteen records required a manual language repair after semantic review. The final dataset therefore contains 136 model-generated paraphrases and 14 repaired paraphrases.
-\end{enumerate}
+For each seed, the local \texttt{mistral:7b} model \cite{jiang2023mistral} generated the natural-language paraphrases: three requested styles (canonical, natural, shorthand) for the train split and two (canonical, natural) for the test split, yielding 150 train missions and 100 test missions. Paraphrase generation deliberately uses a different model from \texttt{qwen2.5-coder:7b}, which remains the only model executing and being evaluated on the capability-interpretation and parameter-reasoning stages throughout this chapter, so the paraphraser and the reasoner under test are never the same model. Automatic checks rejected malformed records, duplicate texts after normalization, and records that violated the candidate schema. Every record contains a stable identifier, a source-seed identifier, the natural-language mission, the expected capability interpretation, and the expected parameter values, copied directly from the authored seed definitions rather than inferred by the paraphrasing model.
 
-
-The resulting \texttt{antrobot\_mission\_dataset\_v1.jsonl} file contains 150 missions: 15 intent groups which were manually defined with 10 paraphrases per group which were done based on an LLM. Every record contains a stable identifier, a source-seed identifier, the natural-language mission, the expected capability interpretation, and the expected parameter values. All 150 missions in this version are supported requests.
-
-Table~\ref{tab:dataset-composition} summarizes the main task composition. The categories are mutually exclusive at seed level.
+Table~\ref{tab:train-test-composition} reports the resulting outcome split; within each split, every category is represented by two or three seeds.
 
 \begin{table}[H]
 \centering
-\caption{Composition of the AntRobot mission dataset.}
-\label{tab:dataset-composition}
-\begin{tabular}{p{4.2cm}p{7.8cm}rr}
-\toprule
-Task family & Examples of covered behavior & Seeds & Missions \\
-\midrule
-Capability only & mapping, navigation, exploration, odometry selection, explicit disabling & 7 & 70 \\
-Parameter only & publication frequency, wheel radius, wheel separation, encoder resolution & 4 & 40 \\
-Capability and parameter & exploration rates, KISS-ICP range, mapping with parameter constraints & 4 & 40 \\
-\midrule
-Total & & 15 & 150 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The dataset covers sparse requests, multi-capability requests, explicit negation, implementation selection between kinematic ICP and KISS-ICP, physical-unit conversion, and synchronized changes to multiple parameters that represent one physical property. For example, a wheel-radius request must update both the drive node and the joint-state estimator, while a request expressed in centimetres must be converted to metres.
-
-A separate five-case file, \texttt{evaluation\_missions.jsonl}, is retained as a small diagnostic set. It is useful for quickly detecting regressions, but its size is insufficient for standalone statistical conclusions. The 150 generated missions form the main dataset for the baseline reported below.
-
-\subsection{Extended train/test datasets}
-\label{sec:extended-datasets}
-
-The dataset above is insufficient for measuring rejection and clarification behaviour, since all 150 of its missions are supported requests. Two independently frozen datasets extend the same seed-to-paraphrase construction methodology to cover the full outcome space and to separate development from held-out evaluation: \texttt{antrobot\_train\_mission\_dataset\_v1.jsonl} and \texttt{antrobot\_test\_mission\_dataset\_v1.jsonl}.
-
-Fifty train seeds (\texttt{seed-101}--\texttt{seed-150}) and fifty test seeds (\texttt{seed-151}--\texttt{seed-200}) were authored per split, more than tripling the fifteen-seed pool used above. Each split now spans three outcomes instead of one: \texttt{supported}, \texttt{unsupported}, and \texttt{ambiguous}. Unsupported seeds are drawn from five categories -- sensor, algorithm, odometry, capability, and invalid parameter value -- and ambiguous seeds requiring clarification from five further categories -- missing numeric value, unresolved alternative, qualitative choice, conflicting requirements, and ambiguous reference. Table~\ref{tab:train-test-composition} reports the resulting outcome split; within each split, every category is represented by two or three seeds.
-
-\begin{table}[H]
-\centering
-\caption{Outcome composition of the extended train and test seed sets.}
+\caption{Outcome composition of the train and test seed sets.}
 \label{tab:train-test-composition}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -64,9 +28,11 @@ Test & 50 & 100 & 25 & 13 & 12 \\
 \end{tabular}
 \end{table}
 
-Paraphrase generation for both splits used \texttt{mistral:7b}, rather than \texttt{qwen2.5-coder:7b}, which generated the original 150-mission dataset described above. This keeps the model that produces the natural-language surface form distinct from \texttt{qwen2.5-coder:7b}, which remains the only model executing and being evaluated on the capability-interpretation and parameter-reasoning stages throughout this chapter: the paraphraser and the reasoner under test are never the same model. Each seed retains three requested styles (canonical, natural, shorthand) in the train split and two (canonical, natural) in the test split, yielding 150 train missions and 100 test missions -- 250 combined, against 150 in the original dataset.
+Every paraphrase is currently recorded as \texttt{pending} review. The structured reference labels carry a provenance guarantee independent of this status, since they are copied from the authored seeds rather than generated; the mission text itself, however, has not yet completed a manual quality pass. Manual inspection during this work surfaced paraphrases whose wording drifted from the intended operator command -- for example, a configuration request rewritten as a clarification question, or the expected rejection reason restated inside the mission text itself -- which a completed review pass would be expected to catch. Results computed against these datasets should be read with this outstanding review step in mind.
 
-Unlike the original dataset, whose semantic review was completed with fourteen manually repaired records, every paraphrase in both extended splits is recorded as \texttt{pending} review at the time of writing. The expected capability interpretation, parameter values, and outcome categories are still copied directly from the authored seed definitions, so the structured reference labels carry the same provenance guarantee as before; the generated mission text, however, has not yet completed the same manual quality pass. Manual inspection during this work surfaced paraphrases whose wording drifted from the intended operator command -- for example, a configuration request rewritten as a clarification question, or the expected rejection reason restated inside the mission text itself -- which a completed review pass would be expected to catch. Results computed against the extended datasets should be read with this outstanding review step in mind.
+The dataset covers sparse requests, multi-capability requests, explicit negation, implementation selection between kinematic ICP and KISS-ICP, physical-unit conversion, and synchronized changes to multiple parameters that represent one physical property. For example, a wheel-radius request must update both the drive node and the joint-state estimator, while a request expressed in centimetres must be converted to metres.
+
+A separate five-case file, \texttt{evaluation\_missions.jsonl}, is retained as a small diagnostic set. It is useful for quickly detecting regressions, but its size is insufficient for standalone statistical conclusions.
 
 \section{Evaluated language-model pipeline}
 
@@ -79,127 +45,113 @@ For reproducibility, each prediction stores the exact system prompt, user prompt
 \section{Evaluation metrics}
 
 The metrics distinguish partial semantic understanding from an entirely correct structured prediction.
-Outcome accuracy is the proportion of missions assigned the correct terminal status and it is the single most important metric. The possible capability-stage outcomes are \texttt{valid}, \texttt{unsupported}, and \texttt{needs\_clarification}. Since the current benchmark contains only supported missions, this metric measures valid-request acceptance and does not measure unsafe acceptance of unsupported requests.
+Outcome accuracy is the proportion of missions assigned the correct terminal status and it is the single most important metric. The possible capability-stage outcomes are \texttt{valid}, \texttt{unsupported}, and \texttt{needs\_clarification}; since the train and test datasets described in Section~\ref{sec:extended-datasets} contain unsupported and ambiguous missions alongside supported ones, this metric also measures unsafe acceptance of a request that should have been rejected or referred for clarification. Unsafe execution rate isolates the most safety-relevant part of that failure mode: the fraction of missions whose gold status is \texttt{unsupported} or \texttt{needs\_clarification} for which the pipeline nonetheless reports a \texttt{valid} status and an applicable configuration change, rather than refusing or asking for clarification.
 Capability exact match checks whether the system selected the correct implementation for every capability, including capabilities that were explicitly disabled. The entire prediction must match the reference; one missing, extra, or incorrect capability makes the case incorrect. Precision and recall additionally measure how many individual capability decisions were correct across the dataset.
 Parameter-selection exact match checks whether the system selected exactly the expected parameter identifiers, with no missing or unnecessary parameters. Precision, recall, and $F_1$ give partial credit when only some identifiers are correct.
-Parameter-value exact match checks whether the system produced the correct value for every expected parameter after applying any required unit conversion. Because the system cannot produce a value for a parameter it failed to select, this metric evaluates parameter selection and value generation together. A future experiment could provide the correct parameter identifiers in advance to evaluate value generation independently.
-Joint LLM exact match requires the entire pipeline to be correct: the outcome, capabilities, selected parameters, and parameter values must all match the reference. Validated inference completion only checks that every required model response was correctly formatted and passed the system's validation rules; it does not mean that the prediction was semantically correct.
-Paraphrase consistency measures how often all ten natural-language versions of the same intent produce identical structured results. Group robustness is stricter because all ten versions must produce the correct results; consistently producing the same wrong answer therefore passes consistency but fails robustness. Mean, median, and 95th-percentile latency measure the time required by all model calls made for a mission.
+Parameter-value exact match checks whether the system produced the correct value for every expected parameter after applying any required unit conversion. Because the system cannot produce a value for a parameter it failed to select, this metric evaluates parameter selection and value generation together. A future experiment could provide the correct parameter identifiers in advance to evaluate value generation independently. Individual-value accuracy relaxes this to per-parameter partial credit, analogous to selection precision and recall: it is the fraction of individually expected parameter values produced correctly across the dataset, regardless of whether every other value in the same mission was also correct.
+Retrieval recall at rank $k$, for $k \in \{1,3,5\}$, measures whether the correct parameter identifier appears among the top-$k$ candidates returned by the deterministic retrieval stage before selection is attempted; mean reciprocal rank averages the inverse of the correct identifier's rank across missions, so a correct match ranked second or third is still rewarded, just less than a correct match ranked first.
+Joint LLM exact match requires the entire three-call pipeline to be correct: the outcome, capabilities, selected parameters, and parameter values must all match the reference. A narrower, stage-scoped end-to-end accuracy is also reported where only the parameter-selection and value-reasoning calls are evaluated together, given each mission's correct capability context rather than a live capability prediction; it should not be read as equivalent to the pipeline-wide joint metric. Validated inference completion only checks that every required model response was correctly formatted and passed the system's validation rules; it does not mean that the prediction was semantically correct.
+Paraphrase consistency measures how often the natural-language paraphrases of the same seed -- three per seed in the train split, two per seed in the test split -- produce identical structured results. Group robustness is stricter because every paraphrase of a seed must produce the correct result; consistently producing the same wrong answer therefore passes consistency but fails robustness. Mean, median, and 95th-percentile latency measure the time required by all model calls made for a mission.
 
-\section{Experimental progression}
+\section{Experimental Results}
+\label{sec:experimental-progression}
 
-Four complete evaluations of the 150-mission dataset are retained under \texttt{artifacts/evaluation}. Table~\ref{tab:experiment-progression} presents them in implementation order. All runs use \texttt{qwen2.5-coder:7b} at temperature zero. The table reports exact-match rates over all missions, micro $F_1$ where partial credit is meaningful, completion after deterministic validation, robustness across each ten-paraphrase group, and total latency per mission.
+Each language-model call introduced in Section~\ref{sec:nl-reasoning} is evaluated independently against the train and test datasets described in Section~\ref{sec:extended-datasets}, so that a capability-interpretation error can be distinguished from a parameter-selection or value-reasoning error rather than collapsed into one end-to-end figure. Every run below uses the current, frozen prompt files.
+
+\subsection{Capability interpretation}
+
+The capability-interpretation call was run in isolation, with the current \texttt{prompts/mission\_interpretation.txt} prompt, against the 150-mission train split and the 100-mission test split. Table~\ref{tab:capability-reasoning-results} reports outcome accuracy, capability exact match, and capability field micro precision, recall, and $F_1$, as defined above.
 
 \begin{table}[H]
 \centering
-\caption{Progressive results for all full-dataset experiments retained in \texttt{artifacts/evaluation}.}
-\label{tab:experiment-progression}
-\small
-\begin{tabular}{p{5.0cm}rrrr}
+\caption{Capability-interpretation results on the train and test datasets.}
+\label{tab:capability-reasoning-results}
+\begin{tabular}{lrr}
 \toprule
-Metric & Baseline & Few-shot & Unified & Minimal contract \\
+Metric & Train ($n=150$) & Test ($n=100$) \\
 \midrule
-Outcome accuracy & 63.3\% & 90.7\% & 62.0\% & \textbf{96.7\%} \\
-Capability exact match & 38.7\% & 38.7\% & 75.3\% & \textbf{96.7\%} \\
-Capability micro $F_1$ & 76.1\% & 71.2\% & 92.6\% & \textbf{98.5\%} \\
-Parameter-selection exact match & 0.7\% & 0.7\% & 53.3\% & \textbf{88.7\%} \\
-Parameter-selection micro $F_1$ & 1.6\% & 11.8\% & 30.6\% & \textbf{91.8\%} \\
-Parameter-value exact match & 0.7\% & 0.7\% & 53.3\% & \textbf{88.7\%} \\
-Parameter-value micro $F_1$ & 1.6\% & 11.8\% & 31.6\% & \textbf{92.6\%} \\
-Joint LLM exact match & 0.0\% & 0.0\% & 40.0\% & \textbf{88.0\%} \\
-Validated pipeline completion & 43.3\% & 18.0\% & 94.7\% & \textbf{98.7\%} \\
-Paraphrase consistency & 6.7\% & 20.0\% & 20.0\% & \textbf{33.3\%} \\
-Group robustness & 0.0\% & 0.0\% & 13.3\% & \textbf{60.0\%} \\
-Mean latency per mission & 5.64 s & 6.91 s & \textbf{5.53 s} & 8.56 s \\
-95th-percentile latency & 14.65 s & \textbf{14.85 s} & 15.55 s & 15.41 s \\
-Runtime/validation errors & 85 & 123 & 8 & \textbf{2} \\
+Outcome accuracy & 95.3\% & 92.0\% \\
+Capability exact match & 90.0\% & 92.0\% \\
+Capability field micro precision & 92.0\% & 88.9\% \\
+Capability field micro recall & 97.9\% & 100.0\% \\
+Capability field micro $F_1$ & 94.8\% & 94.1\% \\
+Runtime/validation errors & 0 & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The four columns are successive system revisions rather than a controlled single-factor ablation. In particular, the two early artifacts use the original dataset annotation and top-12 graph context, whereas the orchestrated artifacts use revised capability annotations, top-10 semantic retrieval, and production-like composition of the independently evaluated stages. The comparison therefore documents engineering progress of the complete system; it does not assign the final gain to one isolated change.
+Both splits complete without a single runtime or validation error, and outcome accuracy exceeds 92\% on both, despite the train and test datasets now containing unsupported and ambiguous missions in addition to supported ones. The gap between capability exact match (90.0\%/92.0\%) and capability field micro $F_1$ (94.8\%/94.1\%) reflects a recurring pattern: most individual capability decisions are correct, but a minority of missions still miss on exactly one field, which is enough to fail the stricter exact-match criterion. Field micro recall exceeds precision on both splits (97.9\%/100.0\% versus 92.0\%/88.9\%), indicating that the model rarely omits a capability the reference expects but occasionally reports one that was not requested.
 
-\subsection{Step 1: initial production-prompt baseline}
+Manual review of all 23 missed cases (15 train, 8 test) shows three distinct failure patterns rather than uniform noise. Most missed cases (14 of 23) request a single invalid parameter value or a genuinely conflicting capability choice, where either the gold label and the prompt's own defaulting rule disagree on what \texttt{valid} should mean, or the model resolved a real ambiguity instead of asking for clarification. A second group (8 of 23) mis-sets the \texttt{exploration} or \texttt{odometry} field specifically on missions that name four or five capabilities at once, including plain, non-abbreviated wording, suggesting a field-tracking limit on crowded requests rather than a language-comprehension failure. The remaining case is a genuinely unsupported capability that the model accepted with default values instead of rejecting.
 
-The baseline ran the fixed production prompts over all 155 available records: five diagnostic cases and 150 generated benchmark cases, using the original capability representation, top-12 graph retrieval at one hop, and temperature zero. No evaluation record was used to train or tune the model, so the run is zero-shot with respect to the dataset; the fixed capability prompt nonetheless contains hand-written demonstrations, so it is more precisely a dataset-zero-shot production-prompt baseline than a strict prompt-level zero-shot run.
+\subsection{Parameter selection and value reasoning}
 
-Capability reasoning showed partial understanding, with 76.1\% micro $F_1$ on the generated set (78.9\% precision, 73.5\% recall), but complete capability objects were correct in only 38.7\% of missions -- many predictions captured most of the requested behaviour while adding or omitting one structured field. Parameter grounding was the dominant failure: only one of 150 generated missions achieved exact parameter selection, and parameter-selection micro $F_1$ was 1.6\%. Frequent errors included invented identifiers and identifiers absent from the bounded retrieval context, which strict validation rejected rather than allowing an ungrounded parameter change; since value reasoning depends on the selected identifiers, parameter-value scores were also 1.6\% micro $F_1$. This does not establish that the third call cannot reason about values, only that the selection-to-value path rarely supplied it with a valid, correct selection. No mission satisfied every strict LLM criterion simultaneously, so joint exact match was zero -- a result that should not be read as uniformly absent language understanding, given the substantially higher capability micro $F_1$, but as evidence that partial capability correctness is insufficient once the downstream parameter contract fails. Only 43.3\% of missions completed all applicable validated calls: 85 generated-set missions produced validation exceptions, 82 at parameter reasoning and three at capability interpretation, reinforcing that the parameter boundary dominates the first baseline's failures rather than model-server availability or rendering. Only one of the 15 intent groups produced identical structured outputs for all ten paraphrases (6.7\% paraphrase consistency), and no group had all ten paraphrases jointly correct.
-
-Table~\ref{tab:baseline-results} separates the five-case diagnostic set from the 150-mission generated set.
+The parameter-selection and value-reasoning calls were evaluated together, using the \texttt{names\_values} retrieval context, against every mission that requests a genuine parameter change or must correctly report \texttt{no\_change} (51 of 150 train missions; 30 of 100 test missions -- the remaining missions are pure capability requests with nothing for this stage to select). Table~\ref{tab:parameter-reasoning-results} reports the retrieval, selection, value, and stage end-to-end metrics defined above.
 
 \begin{table}[H]
 \centering
-\caption{Initial dataset-zero-shot LLM baseline.}
-\label{tab:baseline-results}
-\begin{tabular}{p{6.3cm}rr}
+\caption{Parameter-selection and value-reasoning results on the train and test datasets (\texttt{names\_values} context).}
+\label{tab:parameter-reasoning-results}
+\begin{tabular}{lrr}
 \toprule
-Metric & Diagnostic set ($n=5$) & Generated set ($n=150$) \\
+Metric & Train ($n=51$) & Test ($n=30$) \\
 \midrule
-Outcome accuracy & 100.0\% & 63.3\% \\
-Capability exact match & 0.0\% & 38.7\% \\
-Capability micro precision & 66.7\% & 78.9\% \\
-Capability micro recall & 75.0\% & 73.5\% \\
-Capability micro $F_1$ & 70.6\% & 76.1\% \\
-Parameter-selection exact match & 0.0\% & 0.7\% \\
-Parameter-selection micro $F_1$ & N/A & 1.6\% \\
-Parameter-value exact match & 0.0\% & 0.7\% \\
-Parameter-value micro $F_1$ & N/A & 1.6\% \\
-Joint LLM exact match & 0.0\% & 0.0\% \\
-Validated inference completion & 0.0\% & 43.3\% \\
-Mean latency & 4.46 s & 5.64 s \\
-Median latency & 4.24 s & 4.40 s \\
-95th-percentile latency & 6.99 s & 14.65 s \\
+Retrieval top-1 recall & 42.7\% & 43.3\% \\
+Retrieval top-3 recall & 80.2\% & 80.0\% \\
+Retrieval top-5 recall & 85.4\% & 88.3\% \\
+Retrieval mean reciprocal rank & 0.621 & 0.633 \\
+Parameter-selection exact match & 76.5\% & 86.7\% \\
+Parameter-selection micro precision & 93.3\% & 90.5\% \\
+Parameter-selection micro recall & 81.2\% & 95.0\% \\
+Parameter-selection micro $F_1$ & 86.8\% & 92.7\% \\
+Individual-value accuracy & 87.3\% & 92.5\% \\
+Parameter-value exact match & 74.5\% & 83.3\% \\
+Outcome accuracy & 84.3\% & 100.0\% \\
+Stage end-to-end accuracy & 74.5\% & 83.3\% \\
+Runtime/validation errors & 3 & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Step 2: few-shot prompt demonstrations}
+Retrieval is the weakest link in both splits: the correct parameter identifier is the single top-ranked candidate only 42.7\%/43.3\% of the time, though it appears within the top five for 85.4\%/88.3\% of cases. Selection and value quality are markedly stronger once the correct candidate is retrieved, with parameter-selection exact match reaching 76.5\%/86.7\% and individual-value accuracy 87.3\%/92.5\%; none of the 51 train or 30 test cases had an unsupported or ambiguous gold outcome, so an unsafe-execution rate cannot be computed for this run.
 
-The few-shot run held the model, temperature, dataset, retrieval settings, graph depth, schemas, and deterministic context construction fixed and replaced the three system prompts with systematic demonstrations. The demonstrations used novel wording and values rather than copying benchmark records, and represented capability-only, parameter-only, and combined capability--parameter requests. The parameter-selection prompt specifically demonstrated that capability-only missions should return \texttt{no\_change}, that selected identifiers must occur in the bounded context, and that two consumers of one physical wheel property must be selected together; the value prompt demonstrated unit conversion, consistent coupled values, and copying the current value into \texttt{old\_value}.
+Manual review of all 18 missed cases (13 train, 5 test) again shows a small number of recurring patterns. Roughly a third (6 of 18) are pure retrieval misses: the mission asks to change an exploration or joint-state publication rate in plain language, for example ``publish a map at 2 hertz,'' but \texttt{nodes.explore.publish\_rate} or the equivalent joint-state parameter never reaches the retrieved candidate set, so selection correctly reports \texttt{no\_change} for a request that should have been \texttt{valid}. Another third (6 of 18) over-selects a plausible but unrequested sibling parameter that shares a node or component with a correctly selected one -- \texttt{wheel\_odom\_frame} alongside a wheel-separation change, or \texttt{enable\_explore\_lite} and \texttt{use\_sim\_time} alongside an unrelated request -- consistent with the component-name leakage in the retrieval scorer identified earlier in this project and only partially mitigated. Three train cases are schema-validation errors, where the model's own JSON response contradicts its declared status (for example, claiming \texttt{needs\_clarification} while also returning a partial selection) and is rejected before scoring. The remaining two cases are value-reasoning errors on an otherwise correctly selected parameter, where the reported value is consistent with an inverted or rescaled unit rather than the requested frequency, suggesting a unit-conversion slip rather than a selection failure.
 
-Outcome accuracy increased from 63.3\% to 90.7\%, and parameter-selection and parameter-value micro $F_1$ each increased from 1.6\% to 11.8\%, indicating that more individual identifiers and values were recovered. However, exact parameter accuracy did not improve, capability micro $F_1$ decreased by 4.9 points, and no mission achieved joint exact correctness. Validated completion fell from 43.3\% to 18.0\%, with 116 parameter-reasoning exceptions and seven capability-interpretation exceptions: the demonstrations improved partial semantic recognition but also encouraged the model to attempt more downstream reasoning that failed strict schema or grounding checks. This motivated structural separation and deterministic context control rather than relying on examples alone; the few-shot intervention identifies the parameter prompt and constrained decoding behaviour as targets for controlled refinement rather than resolving them by itself.
+\subsection{Full end-to-end pipeline}
 
-Table~\ref{tab:few-shot-comparison} compares the two runs on the 150 generated missions, with differences in percentage points denoted ``pp''.
+The complete pipeline -- all three calls executed in sequence, each receiving only the outputs of the calls before it -- was evaluated end-to-end against the full train (150) and test (100) datasets. Unlike the two isolated evaluations above, parameter selection and value reasoning here receive the model's own predicted capability context rather than the gold one, so a capability-interpretation error can propagate into the parameter stage. Table~\ref{tab:full-pipeline-results} reports the metrics defined above, taken from \texttt{artifacts/evaluation/full\_pipeline\_v2}.
 
 \begin{table}[H]
 \centering
-\caption{Baseline and few-shot prompt comparison on the generated dataset.}
-\label{tab:few-shot-comparison}
-\begin{tabular}{p{6.1cm}rrr}
+\caption{Full end-to-end pipeline results on the train and test datasets.}
+\label{tab:full-pipeline-results}
+\begin{tabular}{lrr}
 \toprule
-Metric & Baseline & Few-shot & Difference \\
+Metric & Train ($n=150$) & Test ($n=100$) \\
 \midrule
-Outcome accuracy & 63.3\% & 90.7\% & +27.3 pp \\
-Capability exact match & 38.7\% & 38.7\% & 0.0 pp \\
-Capability micro $F_1$ & 76.1\% & 71.2\% & -4.9 pp \\
-Parameter-selection exact match & 0.7\% & 0.7\% & 0.0 pp \\
-Parameter-selection micro $F_1$ & 1.6\% & 11.8\% & +10.2 pp \\
-Parameter-value exact match & 0.7\% & 0.7\% & 0.0 pp \\
-Parameter-value micro $F_1$ & 1.6\% & 11.8\% & +10.2 pp \\
-Joint LLM exact match & 0.0\% & 0.0\% & 0.0 pp \\
-Validated inference completion & 43.3\% & 18.0\% & -25.3 pp \\
-Paraphrase consistency & 6.7\% & 20.0\% & +13.3 pp \\
-Mean latency & 5.64 s & 6.91 s & +1.27 s \\
-95th-percentile latency & 14.65 s & 14.85 s & +0.20 s \\
+Capability exact match & 91.1\% & 100.0\% \\
+Capability field micro $F_1$ & 97.5\% & 100.0\% \\
+Outcome accuracy & 82.7\% & 76.0\% \\
+Parameter-selection exact match & 71.1\% & 72.0\% \\
+Parameter-selection micro $F_1$ & 74.2\% & 74.8\% \\
+Parameter-value micro $F_1$ & 72.7\% & 70.5\% \\
+Parameter-value exact match & 70.0\% & 66.0\% \\
+Joint LLM exact match & 65.6\% & 66.0\% \\
+Paraphrase consistency & 12.0\% & 14.0\% \\
+Group robustness & 40.0\% & 48.0\% \\
+Validated inference completion & 95.3\% & 97.0\% \\
+Unsafe execution rate & 26.7\% & 38.0\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Step 3: unified orchestrated evaluation}
+Joint LLM exact match -- every stage correct simultaneously -- reaches only 65.6\%/66.0\%, well below the individual-stage exact-match figures reported above (90\%--100\% for capability, 71\%--87\% for parameter selection in isolation), and the unsafe execution rate (26.7\%/38.0\%) is the more concerning number of the two.
 
-The unified run evaluated the three agents in the same order and with the same intermediate contracts used by the application. Parameter retrieval was reduced to ten candidates and enriched with LLM-derived aliases, user expressions, behavioral descriptions, constraints, and typed relationships. Retrieval ranks and scores were kept outside the model-facing context; capability realization restricted the catalogue to active components; capability-only requests were prevented from becoming invented launch-argument changes; and selection and value generation were separated. A single validation-guided retry was internal to the pipeline. These changes raised capability exact match to 75.3\%, parameter-selection exact match to 53.3\%, joint exact match to 40.0\%, and validated completion to 94.7\%. The run demonstrated successful composition of the independently tested agents, but capability errors still propagated into retrieval and parameter reasoning.
-
-\subsection{Step 4: minimal capability contract}
-
-The final recorded experiment simplified capability output to four direct capability values. Each value is the selected implementation, while \texttt{null} is reserved for an explicitly disabled capability. The capability prompt preserves registry defaults for unmentioned capabilities, changes an implementation only when requested, distinguishes capability selection from parameter tuning, and omits inference provenance such as \texttt{selection\_basis}. Dataset annotations and deterministic realization were updated to the same contract. Additional prompt rules addressed negation and short parameter-only missions, while active-component filtering, semantic top-10 retrieval, bounded parameter selection, value-only reasoning, and deterministic validation remained in place.
-
-This final step produced the strongest result in every semantic correctness measure: capability exact match reached 96.7\%, parameter-selection and parameter-value exact match reached 88.7\%, and 132 of 150 missions were jointly exact, corresponding to 88.0\%. Only two missions ended in runtime or validation errors, and 98.7\% completed the validated pipeline. Nine of the fifteen seed groups were correct for all ten paraphrases. Mean latency increased to 8.56 seconds because more missions successfully reached all applicable reasoning stages and the internal correction path could be exercised.
-
-For parameter-changing missions specifically, the minimal-contract artifact reports retrieval recall of 65.8\% at rank one, 98.7\% within the top three, and 100\% within the top five. Selection exact-set accuracy over the 80 parameter-change cases was 83.8\%, individual-value accuracy was 96.4\%, and complete-value-set accuracy was 83.8\%. This supports the staged design: once the correct bounded identifiers are available, generating their values is considerably more reliable than identifying the complete parameter set.
+Classifying all 60 train and 41 test failures by which stage's output first diverges from the reference explains why the isolated-stage numbers do not predict this joint result. 23 of 60 train failures and 18 of 41 test failures show both a capability mismatch and a downstream parameter mismatch in the same mission, confirming the propagation effect noted above. A comparable share, 23 of 60 train and 17 of 41 test failures, have a correct capability object but still fail at parameter selection or value reasoning, matching the retrieval and over-selection patterns already identified in isolation. The remaining 14 train and 5 test failures have an incorrect capability object whose associated parameter output was nonetheless scored correct, since the mismatched capability field happened not to be the one the requested parameter depends on.
 
 \section{Limitations}
 \label{sec:dataset-results-limitations}
 
-Each artifact in Table~\ref{tab:experiment-progression} is a single run of one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware, so repeated runs would be needed for variance estimates and confidence intervals, which are not yet available. The four-column progression also combines prompt, contract, dataset-label, retrieval, and orchestration changes rather than isolating one factor at a time: it demonstrates the improvement of the implemented system, but controlled ablations are required to quantify the contribution of each intervention independently.
+All three result tables in this chapter are a single run of one quantized local model. Temperature zero improves repeatability but does not guarantee identical outputs across inference-runtime versions or hardware, so repeated runs would be needed for variance estimates and confidence intervals, which are not yet available.
 
-The 150-mission dataset used throughout this progression still requires final independent author review, and its all-supported composition prevents measurement of unsupported-request rejection, clarification recall, or unsafe execution. The extended train/test datasets introduced in Section~\ref{sec:extended-datasets} begin to address this gap, but are themselves still pending the same review step. These limitations are turned into concrete next activities in Section~\ref{sec:next-activities}.
+Only Table~\ref{tab:full-pipeline-results} exercises the live capability-to-parameter propagation described above; well over half of its joint-pipeline failures involve a capability mismatch (61.7\% train, 56.1\% test), and most of those also carry a parameter-stage mismatch in the same mission (62.2\% train, 78.3\% test). Its unsafe execution rate remains the most significant unresolved concern in the current system. The train and test paraphrases also remain in \texttt{pending} review, as noted in Section~\ref{sec:extended-datasets}. These limitations are turned into concrete next activities in Section~\ref{sec:next-activities}.

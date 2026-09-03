@@ -161,13 +161,13 @@ COMPUTER SCIENCE AND ENGINEERING DEPARTMENT\\}
 %%
 \newcommand{\AbstractEN}{Modern robotic platforms such as the AntRobot operate within complex software ecosystems based on the Robot Operating System (ROS2) \cite{quigley2009ros} \cite{macenski2022ros2} where system functionality is distributed across multiple interconnected nodes responsible for perception, localization, mapping, planning, and control. Although ROS promotes modular design, configuring these nodes remains a largely manual and error-prone process. Even minor changes, such as switching sensors, modifying mission modes, or adjusting parameters, often require extensive manual edits across multiple YAML and launch files.
 
-This repetitive configuration effort limits reproducibility, scalability, and experimentation speed in both research and applied robotics. Existing orchestration solutions, including ROScribe and RobotKube, provide partial automation but continue to rely on static configuration schemes that restrict flexibility and reuse.
+This repetitive configuration effort limits reproducibility, scalability, and experimentation speed in both research and applied robotics. Existing orchestration solutions, including ROScribe \cite{roscribe} and RobotKube \cite{lampe2023robotkube}, provide partial automation but continue to rely on static configuration schemes that restrict flexibility and reuse.
 
-This work proposes a hybrid ROS orchestration framework that combines source-grounded repository analysis, bounded language-model reasoning, and deterministic configuration generation. Static analysis extracts ROS~2 nodes, launch structure, parameters, interfaces, and provenance into a versioned system model. A large language model (LLM) interprets high-level mission descriptions, selects parameters only from retrieved evidence, and proposes typed values. Strict schemas and deterministic checks validate these conclusions before Jinja2 templates materialize launch and YAML artifacts; the model never writes ROS files directly.
+This work proposes a hybrid ROS orchestration framework that combines source-grounded repository analysis, bounded language-model reasoning, and deterministic configuration generation. Static analysis extracts ROS~2 nodes, launch structure, parameters, interfaces, and provenance into a versioned system model. A large language model (LLM) interprets high-level mission descriptions, selects parameters only from retrieved evidence, and proposes typed values. Strict schemas and deterministic checks validate these conclusions before Jinja2 \cite{jinja2025} templates materialize launch and YAML artifacts; the model never writes ROS files directly.
 
-The prototype derives 109 writable configuration slots from the AntRobot workspace and was evaluated on 150 generated mission paraphrases grouped around 15 verified intents, together with a five-case diagnostic set. The initial local-model baseline achieved 76.1\% capability micro $F_1$, but only 1.6\% parameter-selection micro $F_1$ and no jointly exact missions. Few-shot prompting improved supported-outcome accuracy and partial parameter recovery, but did not improve exact end-to-end correctness; progressive refinement of the capability contract, retrieval, and prompts subsequently raised joint exact match to 88.0\% under the same all-supported composition.
+The prototype derives 109 writable configuration slots from the AntRobot workspace and was evaluated on train (150 missions) and test (100 missions) datasets spanning supported, unsupported, and ambiguous outcomes. Capability interpretation, evaluated in isolation, reached 90.0\%/92.0\% exact match. Parameter selection and value reasoning, evaluated in isolation given each mission's correct capability context, reached 76.5\%/86.7\% selection exact match and 87.3\%/92.5\% individual-value accuracy. Evaluated as a complete, live pipeline, in which each call receives only the outputs of the calls before it, joint exact match reached 65.6\%/66.0\%, and the unsafe execution rate -- the fraction of unsupported or ambiguous missions the pipeline executed instead of refusing or requesting clarification -- was 26.7\%/38.0\%.
 
-Extending the benchmark with unsupported and ambiguous missions across an independent train/test split then exposed a second, distinct source of error, situated in the evaluation harness rather than the language model itself: capability-level gold labels that conflated genuine capability-level ambiguity with purely parameter-level ambiguity or invalid parameter values, paraphrase generation that drifted from operator commands into clarification questions or leaked its own expected answer into the mission text, and a lexical retrieval scorer whose exact-match heuristic and component-name weighting let capability-activation vocabulary dominate candidate rankings for unrelated runtime parameters. Correcting these dataset- and retrieval-level defects, without altering the underlying model, raised parameter-reasoning end-to-end accuracy from 46.7\% to 71.7\% and parameter-selection exact-set accuracy from 47.1\% to 76.5\% on the training split, while halving the rate of unrecoverable pipeline errors. These results demonstrate both the feasibility of the hybrid architecture and the extent to which dataset-generation quality and evaluation-harness correctness, not only prompt and retrieval design, determine the measured reliability of LLM-based ROS configuration reasoning.}
+Building this benchmark surfaced a second, distinct source of error, situated in the evaluation harness rather than the language model itself: capability-level gold labels that conflated genuine capability-level ambiguity with purely parameter-level ambiguity or invalid parameter values, paraphrase generation that drifted from operator commands into clarification questions or leaked its own expected answer into the mission text, and a lexical retrieval scorer whose exact-match heuristic and component-name weighting let capability-activation vocabulary dominate candidate rankings for unrelated runtime parameters. Correcting these dataset- and retrieval-level defects, without altering the underlying model, produced the capability- and parameter-reasoning results reported above. These findings demonstrate both the feasibility of the hybrid architecture and the extent to which dataset-generation quality and evaluation-harness correctness, not only prompt and retrieval design, determine the measured reliability of LLM-based ROS configuration reasoning.}
 
 \begin{document}
 
@@ -181,9 +181,6 @@ Extending the benchmark with unsupported and ambiguous missions across an indepe
 
 \AbstractPage{}
 
-% \input{sections/introduction}
-% \input{sections/problem_analysis}
-% \input{sections/sota}
 \input{sections/proposed_solution}
 \input{sections/implementation_details}
 \input{sections/dataset_results}
@@ -193,7 +190,6 @@ Extending the benchmark with unsupported and ambiguous missions across an indepe
 \input{sections/annex_llm_prompts}
 \end{appendices}
 
-\nocite{*}
 \bibliographystyle{IEEEtran}
 \begingroup
 \scriptsize
