@@ -154,9 +154,24 @@ PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
 PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
   --dataset data/antrobot_train_mission_dataset_v1.jsonl \
   --model qwen2.5-coder:7b \
-  --output artifacts/capability_reasoning/train_second
+  --output artifacts/capability_reasoning/train_fourth
 
 PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
   --dataset data/antrobot_test_mission_dataset_v1.jsonl \
   --model qwen2.5-coder:7b \
   --output artifacts/capability_reasoning/test_initial
+
+
+Parameter evaluation and reasoning:
+PYTHONPATH=src python helper_scripts/evaluate_parameter_reasoning.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --context-variant names_values \
+  --output artifacts/parameter_reasoning/train_qwen_names_values
+
+
+PYTHONPATH=src python helper_scripts/evaluate_parameter_reasoning.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --context-variant names_values \
+  --output artifacts/parameter_reasoning/test_qwen_names_values
