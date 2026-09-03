@@ -7,7 +7,7 @@ This annex illustrates the three language-model calls using one successful missi
 Set the joint-state publication frequency to 30 hertz.
 \end{lstlisting}
 
-The responses below are the actual raw JSON objects returned by \texttt{qwen2.5-coder:7b} for case \texttt{seed-108-p01}. The system-message examples preserve the operative instructions and representative runtime context. Large generated catalogue, candidate-record, and JSON-schema sections are abbreviated because they are machine-generated inputs rather than hand-written instructions; their omission is marked explicitly.
+The responses are raw JSON from \texttt{qwen2.5-coder:7b} for case \texttt{seed-108-p01}. Machine-generated catalogue and schema sections are abbreviated.
 
 \section{Capability Interpretation Prompt}
 
@@ -47,8 +47,6 @@ Required JSON schema:
   [MissionInterpretation schema omitted for readability]
 \end{lstlisting}
 
-\subsection*{LLM response}
-
 \begin{lstlisting}[style=annexcode,language={},caption={Capability interpretation returned by the model.},label={lst:capability-response}]
 {
   "status": "valid",
@@ -63,7 +61,7 @@ Required JSON schema:
 
 \section{Parameter Selection Prompt}
 
-After deterministic capability realization, the second call receives only parameters belonging to the approved component scope. It selects identifiers but does not calculate values. Retrieval ranks, scores, and origins are not included in the model-visible records.
+The second call selects identifiers from parameters in the approved component scope; it does not calculate values.
 
 \begin{lstlisting}[style=annexcode,caption={Representative parameter-selection system message.},label={lst:selection-system-prompt}]
 You select which ROS configuration values are relevant to the requested change.
@@ -117,15 +115,13 @@ Bounded selection context:
 }
 \end{lstlisting}
 
-\subsection*{LLM response}
-
 \begin{lstlisting}[style=annexcode,language={},caption={Parameter selection returned by the model.},label={lst:selection-response}]
 {
   "status": "valid",
   "selected_parameters": [
     {
       "parameter_id": "nodes.joint_state_estimator.publish_frequency",
-      "relevance": "The parameter directly controls how often joint state information is published, which affects the rate at which joint states are updated.",
+      "relevance": "Controls how often joint states are published.",
       "confidence": 1.0
     }
   ],
@@ -135,7 +131,7 @@ Bounded selection context:
 
 \section{Parameter-Value Reasoning Prompt}
 
-The final call sees only the validated selection. It must repeat the frozen current value, derive the requested new value, and cannot introduce another identifier.
+The final call derives values only for the validated selection.
 
 \begin{lstlisting}[style=annexcode,caption={Representative parameter-value system message.},label={lst:value-system-prompt}]
 You calculate proposed values for parameters selected in the previous stage.
@@ -171,11 +167,7 @@ Selected parameter context:
   "relevant_relationships": []
 }
 
-Required JSON schema:
-  [ParameterValueInterpretation schema omitted for readability]
 \end{lstlisting}
-
-\subsection*{LLM response}
 
 \begin{lstlisting}[style=annexcode,language={},caption={Parameter-value interpretation returned by the model.},label={lst:value-response}]
 {
