@@ -20,6 +20,22 @@ def test_expected_reads_synthetic_capability_contract() -> None:
     }
 
 
+def test_expected_accepts_terminal_outcomes_without_capabilities() -> None:
+    assert _expected({
+        "expected_capability_interpretation": {
+            "status": "unsupported",
+            "reason": "capability unavailable",
+        },
+    }) == {"status": "unsupported", "capabilities": {}}
+    assert _expected({
+        "expected_capability_interpretation": {
+            "status": "needs_clarification",
+            "reason": "missing choice",
+            "clarification_question": "Which option should be used?",
+        },
+    }) == {"status": "needs_clarification", "capabilities": {}}
+
+
 def test_metrics_count_exact_status_and_field_quality() -> None:
     records = [
         {

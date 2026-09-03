@@ -1,0 +1,89 @@
+# model: qwen2.5-coder:7b
+model: mistral:7b
+candidates_per_seed: 3
+start_seed_index: 1
+seed_path: data/antrobot_train_seed_missions_v1.jsonl
+dataset_path: data/antrobot_train_mission_dataset_v1.jsonl
+metadata_path: data/antrobot_train_mission_dataset_v1.metadata.json
+configuration_schema_path: artifacts/template_configuration/template_configuration_schema.json
+capability_registry_path: configuration_templates/capability_registry.yaml
+candidate_history_path: artifacts/dataset_generation/antrobot_train_missions_v1/candidates.jsonl
+raw_directory: artifacts/dataset_generation/antrobot_train_missions_v1/raw
+semantic_rejection_path: artifacts/dataset_generation/antrobot_train_missions_v1/semantic_rejections.json
+manual_repair_path: artifacts/dataset_generation/antrobot_train_missions_v1/manual_repairs.json
+first_batch_styles:
+  - canonical
+  - natural
+  - shorthand
+  - imperative
+  - negative_phrasing
+  - multi_clause
+second_batch_styles:
+  - natural
+  - shorthand
+  - imperative
+  - multi_clause
+semantic_rejections:
+  seed-101-p05: Do not use SLAM for mapping. Use Cartographer and default kinematic ICP odometry only.
+  seed-101-p06: Use Cartographer and the standard kinematic ICP odometry method for navigation.
+  seed-101-p07: Generate a map using Cartographer and its default kinematic ICP odometry approach.
+  seed-101-p10: Use Cartographer for mapping, employing the standard kinematic ICP odometry method for navigation.
+  seed-102-p05: Disable mapping and autonomous navigation separately.
+  seed-102-p10: First, enable mapping; then, enable autonomous navigation for seamless operation together.
+  seed-103-p07: Navigate through new areas, automatically creating a detailed map as you go.
+  seed-106-p05: Do not enable autonomous exploration, keep all other capabilities the same.
+  seed-107-p05: Disable everything except mapping, navigation, autonomous exploration, and KISS-ICP odometry.
+  seed-109-p05: Disable manual exploration and set the frontier planner frequency to 0.25 hertz.
+  seed-110-p05: Disable autonomous exploration and set the map publish rate to a non-zero value.
+  seed-110-p10: Begin enabling autonomous exploration, followed by configuring the map publish rate at 2 Hz.
+  seed-111-p06: For odometry, we will utilize KISS-ICP and limit the sensor range to no more than 5 meters.
+  seed-111-p07: Enable KISS-ICP odometry with a maximum sensor range of 5 meters for navigation.
+  seed-113-p03: Update wheel separation to 25 cm in all using components.
+  seed-113-p05: Remove any current setting of wheel separation and set it to 25 centimetres.
+  seed-113-p10: For all components utilizing wheel separation, set the distance to 25 centimetres, removing any previous settings.
+  seed-114-p05: Do not set both wheel encoders to produce more than 4096 counts per revolution.
+  seed-115-p05: Create a map with KISS-ICP, limiting the maximum sensor range to 20 metres, and ensure navigation is not used.
+additional_semantic_rejections:
+  - candidate_id: seed-101-p05
+    text: Disable autonomous exploration and keep all other capabilities intact.
+  - candidate_id: seed-101-p06
+    text: Enable mapping, autonomous exploration, and use the default kinematic ICP odometry pipeline with Cartographer.
+  - candidate_id: seed-101-p10
+    text: Enable mapping with Cartographer and use the default kinematic ICP odometry pipeline for autonomous exploration.
+  - candidate_id: seed-102-p05
+    text: Disable mapping, disable autonomous navigation.
+  - candidate_id: seed-102-p10
+    text: Enable mapping and autonomous navigation simultaneously, utilizing the default kinematic ICP odometry pipeline with Cartographer.
+  - candidate_id: seed-103-p07
+    text: Explore an unmapped environment autonomously while building its map using Cartographer and the default kinematic ICP odometry pipeline.
+  - candidate_id: seed-107-p05
+    text: Disable autonomous exploration, keep all other capabilities intact.
+  - candidate_id: seed-109-p05
+    text: Disable autonomous exploration and keep other capabilities active.
+  - candidate_id: seed-110-p05
+    text: Disable autonomous exploration and maintain other capabilities as they are.
+  - candidate_id: seed-111-p06
+    text: Enable mapping and use KISS-ICP odometry with a maximum sensor range of 5 metres while keeping navigation disabled.
+  - candidate_id: seed-113-p05
+    text: Disable autonomous exploration and keep all other capabilities active.
+  - candidate_id: seed-113-p10
+    text: Set the distance between the wheel centres to 25 centimetres in all components that use this parameter, and disable autonomous exploration while keeping other capabilities intact.
+  - candidate_id: seed-114-p05
+    text: Disable both mapping and autonomous exploration while configuring the encoders for 4096 counts per revolution.
+  - candidate_id: seed-115-p05
+    text: Build a map using KISS-ICP, but do not enable autonomous exploration or navigation. Limit the sensor range to 20 meters.
+manual_replacements:
+  seed-101-p05: Create a map with Cartographer while using the default kinematic ICP odometry pipeline.
+  seed-101-p06: Use Cartographer to build the map and use kinematic ICP for odometry.
+  seed-101-p10: Configure Cartographer mapping together with the default kinematic ICP odometry pipeline.
+  seed-102-p05: Run the robot with both mapping and autonomous navigation enabled.
+  seed-102-p10: Activate autonomous navigation alongside the mapping capability.
+  seed-103-p07: Let the robot autonomously explore unfamiliar space and construct a map as it moves.
+  seed-107-p05: Turn on mapping, navigation, autonomous exploration, and KISS-ICP-based odometry.
+  seed-109-p05: Start autonomous exploration with the frontier planner operating at 0.25 hertz.
+  seed-110-p05: Run autonomous exploration and publish its map twice per second.
+  seed-111-p06: Select KISS-ICP odometry and set its maximum sensor range to exactly 5 metres.
+  seed-113-p05: Apply a 25-centimetre wheel separation to every component that uses this setting.
+  seed-113-p10: Use the same 25-centimetre distance between wheel centres in all components that consume wheel separation.
+  seed-114-p05: Set each of the two wheel encoders to exactly 4096 counts per revolution.
+  seed-115-p05: Use KISS-ICP to build the map, set the maximum sensor range to exactly 20 metres, and leave navigation disabled.

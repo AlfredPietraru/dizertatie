@@ -41,7 +41,8 @@ def _read_json(path: Path) -> dict:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=Path, default=Path("data/evaluation_missions.jsonl"))
+    parser.add_argument("--dataset", type=Path, required=True,
+                        help="Training or test JSONL dataset to evaluate.")
     parser.add_argument("--output", type=Path, default=DEFAULT_EVALUATION_OUTPUT)
     parser.add_argument("--model", default=None)
     parser.add_argument("--prompt", type=Path, default=Path("prompts/mission_interpretation.txt"))

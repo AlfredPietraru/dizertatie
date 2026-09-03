@@ -35,7 +35,8 @@ def _parser() -> argparse.ArgumentParser:
         "--raw-directory", type=Path,
         default=DATASET_GENERATION_DIRECTORY / "raw",
     )
-    generate.add_argument("--model", default="qwen2.5-coder:7b")
+    # generate.add_argument("--model", default="qwen2.5-coder:7b")
+    generate.add_argument("--model", default="mistral:7b") 
     review = commands.add_parser("review")
     review.add_argument("candidate_id"); review.add_argument("decision", choices=("accept", "reject"))
     review.add_argument("--candidates", type=Path, default=Path("data/synthetic_candidates_v1.jsonl"))

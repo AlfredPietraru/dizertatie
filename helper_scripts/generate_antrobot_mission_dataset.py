@@ -3,11 +3,15 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from ros_config_builder.mission import (
     CandidateReview,
@@ -19,85 +23,79 @@ from ros_config_builder.mission import (
     load_synthetic_seeds,
     write_candidate_history,
 )
+from ros_config_builder.mission.generation import GeneratedBatch, SyntheticCandidate
 
 
-MODEL = "qwen2.5-coder:7b"
-SEED_PATH = Path("data/antrobot_seed_missions_v1.jsonl")
-DATASET_PATH = Path("data/antrobot_mission_dataset_v1.jsonl")
-METADATA_PATH = Path("data/antrobot_mission_dataset_v1.metadata.json")
-CONFIGURATION_SCHEMA_PATH = Path(
-    "artifacts/template_configuration/template_configuration_schema.json"
-)
-GENERATION_DIRECTORY = Path("artifacts/dataset_generation/antrobot_missions_v1")
-CANDIDATE_HISTORY_PATH = GENERATION_DIRECTORY / "candidates.jsonl"
-RAW_DIRECTORY = GENERATION_DIRECTORY / "raw"
-SEMANTIC_REJECTION_PATH = GENERATION_DIRECTORY / "semantic_rejections.json"
-MANUAL_REPAIR_PATH = GENERATION_DIRECTORY / "manual_repairs.json"
-EXPECTED_SEEDS = 15
-EXPECTED_PARAPHRASES_PER_SEED = 10
-EXPECTED_RECORDS = EXPECTED_SEEDS * EXPECTED_PARAPHRASES_PER_SEED
-FIRST_BATCH_STYLES = [
-    "canonical",
-    "natural",
-    "shorthand",
-    "imperative",
-    "negative_phrasing",
-    "multi_clause",
-]
-SECOND_BATCH_STYLES = ["natural", "shorthand", "imperative", "multi_clause"]
-SEMANTIC_REJECTIONS = {
-    "seed-101-p05": "Do not use SLAM for mapping. Use Cartographer and default kinematic ICP odometry only.",
-    "seed-101-p06": "Use Cartographer for mapping and the standard kinematic ICP odometry method for navigation.",
-    "seed-101-p07": "Generate a map using Cartographer and its default kinematic ICP odometry approach.",
-    "seed-101-p10": "Use Cartographer for mapping, employing the standard kinematic ICP odometry method for navigation.",
-    "seed-102-p05": "Disable mapping and autonomous navigation separately.",
-    "seed-102-p10": "First, enable mapping; then, enable autonomous navigation for seamless operation together.",
-    "seed-103-p07": "Navigate through new areas, automatically creating a detailed map as you go.",
-    "seed-106-p05": "Do not enable autonomous exploration, keep all other capabilities the same.",
-    "seed-107-p05": "Disable everything except mapping, navigation, autonomous exploration, and KISS-ICP odometry.",
-    "seed-109-p05": "Disable manual exploration and set the frontier planner frequency to 0.25 hertz.",
-    "seed-110-p05": "Disable autonomous exploration and set the map publish rate to a non-zero value.",
-    "seed-110-p10": "Begin enabling autonomous exploration, followed by configuring the map publish rate at 2 Hz.",
-    "seed-111-p06": "For odometry, we will utilize KISS-ICP and limit the sensor range to no more than 5 meters.",
-    "seed-111-p07": "Enable KISS-ICP odometry with a maximum sensor range of 5 meters for navigation.",
-    "seed-113-p03": "Update wheel separation to 25 cm in all using components.",
-    "seed-113-p05": "Remove any current setting of wheel separation and set it to 25 centimetres.",
-    "seed-113-p10": "For all components utilizing wheel separation, set the distance to 25 centimetres, removing any previous settings.",
-    "seed-114-p05": "Do not set both wheel encoders to produce more than 4096 counts per revolution.",
-    "seed-115-p05": "Create a map with KISS-ICP, limiting the sensor range to no more than 20 metres, and ensure navigation is not used.",
-}
-ADDITIONAL_SEMANTIC_REJECTIONS = {
-    ("seed-101-p05", "Disable autonomous exploration and keep all other capabilities intact."),
-    ("seed-101-p06", "Enable mapping, autonomous exploration, and use the default kinematic ICP odometry pipeline with Cartographer."),
-    ("seed-101-p10", "Enable mapping with Cartographer and use the default kinematic ICP odometry pipeline for autonomous exploration."),
-    ("seed-102-p05", "Disable mapping, disable autonomous navigation."),
-    ("seed-102-p10", "Enable mapping and autonomous navigation simultaneously, utilizing the default kinematic ICP odometry pipeline with Cartographer."),
-    ("seed-103-p07", "Explore an unmapped environment autonomously while building its map using Cartographer and the default kinematic ICP odometry pipeline."),
-    ("seed-107-p05", "Disable autonomous exploration, keep all other capabilities intact."),
-    ("seed-109-p05", "Disable autonomous exploration and keep other capabilities active."),
-    ("seed-110-p05", "Disable autonomous exploration and maintain other capabilities as they are."),
-    ("seed-111-p06", "Enable mapping and use KISS-ICP odometry with a maximum sensor range of 5 metres while keeping navigation disabled."),
-    ("seed-113-p05", "Disable autonomous exploration and keep all other capabilities active."),
-    ("seed-113-p10", "Set the distance between the wheel centres to 25 centimetres in all components that use this parameter, and disable autonomous exploration while keeping other capabilities intact."),
-    ("seed-114-p05", "Disable both mapping and autonomous exploration while configuring the encoders for 4096 counts per revolution."),
-    ("seed-115-p05", "Build a map using KISS-ICP, but do not enable autonomous exploration or navigation. Limit the sensor range to 20 meters."),
-}
-MANUAL_REPLACEMENTS = {
-    "seed-101-p05": "Create a map with Cartographer while using the default kinematic ICP odometry pipeline.",
-    "seed-101-p06": "Use Cartographer to build the map and use kinematic ICP for odometry.",
-    "seed-101-p10": "Configure Cartographer mapping together with the default kinematic ICP odometry pipeline.",
-    "seed-102-p05": "Run the robot with both mapping and autonomous navigation enabled.",
-    "seed-102-p10": "Activate autonomous navigation alongside the mapping capability.",
-    "seed-103-p07": "Let the robot autonomously explore unfamiliar space and construct a map as it moves.",
-    "seed-107-p05": "Turn on mapping, navigation, autonomous exploration, and KISS-ICP-based odometry.",
-    "seed-109-p05": "Start autonomous exploration with the frontier planner operating at 0.25 hertz.",
-    "seed-110-p05": "Run autonomous exploration and publish its map twice per second.",
-    "seed-111-p06": "Select KISS-ICP odometry and set its maximum sensor range to exactly 5 metres.",
-    "seed-113-p05": "Apply a 25-centimetre wheel separation to every component that uses this setting.",
-    "seed-113-p10": "Use the same 25-centimetre distance between wheel centres in all components that consume wheel separation.",
-    "seed-114-p05": "Set each of the two wheel encoders to exactly 4096 counts per revolution.",
-    "seed-115-p05": "Use KISS-ICP to build the map, set the maximum sensor range to exactly 20 metres, and leave navigation disabled.",
-}
+@dataclass(frozen=True)
+class DatasetGenerationConfig:
+    model: str
+    candidates_per_seed: int
+    seed_path: Path
+    dataset_path: Path
+    metadata_path: Path
+    configuration_schema_path: Path
+    capability_registry_path: Path
+    candidate_history_path: Path
+    raw_directory: Path
+    semantic_rejection_path: Path
+    manual_repair_path: Path
+    first_batch_styles: list[str]
+    second_batch_styles: list[str]
+    semantic_rejections: dict[str, str]
+    additional_semantic_rejections: set[tuple[str, str]]
+    manual_replacements: dict[str, str]
+    start_seed_index: int
+
+
+def load_generation_config(path: Path) -> DatasetGenerationConfig:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("dataset generation config must be a YAML object")
+    required = {
+        "model", "seed_path", "dataset_path", "metadata_path",
+        "configuration_schema_path", "capability_registry_path",
+        "candidate_history_path", "raw_directory", "semantic_rejection_path",
+        "manual_repair_path", "first_batch_styles", "second_batch_styles",
+        "semantic_rejections", "additional_semantic_rejections", "manual_replacements",
+        "start_seed_index", "candidates_per_seed",
+    }
+    missing = sorted(required - raw.keys())
+    unknown = sorted(raw.keys() - required)
+    if missing or unknown:
+        raise ValueError(f"invalid config keys; missing={missing}, unknown={unknown}")
+    additional = raw["additional_semantic_rejections"]
+    if not isinstance(additional, list):
+        raise ValueError("additional_semantic_rejections must be a list")
+    candidates_per_seed = int(raw["candidates_per_seed"])
+    if candidates_per_seed < 1:
+        raise ValueError("candidates_per_seed must be at least 1")
+    available_styles = len(raw["first_batch_styles"]) + len(raw["second_batch_styles"])
+    if candidates_per_seed > available_styles:
+        raise ValueError(
+            f"candidates_per_seed={candidates_per_seed} exceeds the "
+            f"{available_styles} configured style slots"
+        )
+    return DatasetGenerationConfig(
+        model=str(raw["model"]),
+        candidates_per_seed=candidates_per_seed,
+        seed_path=Path(raw["seed_path"]),
+        dataset_path=Path(raw["dataset_path"]),
+        metadata_path=Path(raw["metadata_path"]),
+        configuration_schema_path=Path(raw["configuration_schema_path"]),
+        capability_registry_path=Path(raw["capability_registry_path"]),
+        candidate_history_path=Path(raw["candidate_history_path"]),
+        raw_directory=Path(raw["raw_directory"]),
+        semantic_rejection_path=Path(raw["semantic_rejection_path"]),
+        manual_repair_path=Path(raw["manual_repair_path"]),
+        first_batch_styles=list(raw["first_batch_styles"]),
+        second_batch_styles=list(raw["second_batch_styles"]),
+        semantic_rejections=dict(raw["semantic_rejections"]),
+        additional_semantic_rejections={
+            (str(item["candidate_id"]), str(item["text"])) for item in additional
+        },
+        manual_replacements=dict(raw["manual_replacements"]),
+        start_seed_index=int(raw["start_seed_index"]),
+    )
 
 
 def _load_environment(path: Path = Path(".env")) -> None:
@@ -122,7 +120,104 @@ def _write_jsonl(records: list[dict], path: Path) -> None:
     )
 
 
-def _repair_rejected_candidates(candidates, seeds_by_id, backend) -> None:
+def _generation_batches(config: DatasetGenerationConfig) -> list[tuple[str, list[str]]]:
+    remaining = config.candidates_per_seed
+    batches = []
+    for series, configured_styles in (
+        ("a", config.first_batch_styles),
+        ("b", config.second_batch_styles),
+    ):
+        styles = configured_styles[:remaining]
+        if styles:
+            batches.append((series, styles))
+            remaining -= len(styles)
+    return batches
+
+
+def _candidates_from_raw(seed, config: DatasetGenerationConfig) -> list[SyntheticCandidate] | None:
+    batches = []
+    for series, styles in _generation_batches(config):
+        path = config.raw_directory / f"{seed.id}-batch-{series}.json"
+        if not path.is_file():
+            return None
+        batch = GeneratedBatch.model_validate_json(path.read_text(encoding="utf-8"))
+        returned_styles = [item.requested_style for item in batch.candidates]
+        if returned_styles[:len(styles)] != styles:
+            return None
+        batches.extend(batch.candidates[:len(styles)])
+    candidates = [
+        SyntheticCandidate(
+            candidate_id=f"{seed.id}-p{index:02d}",
+            seed_id=seed.id,
+            outcome=seed.outcome,
+            requested_style=item.requested_style,
+            text=item.text.strip(),
+            generator_model=config.model,
+        )
+        for index, item in enumerate(batches, 1)
+    ]
+    if len(candidates) != config.candidates_per_seed:
+        return None
+    return candidates
+
+
+def _validate_partial_history(candidates, seeds_by_id, candidates_per_seed: int) -> set[str]:
+    candidate_ids = [candidate.candidate_id for candidate in candidates]
+    if len(candidate_ids) != len(set(candidate_ids)):
+        raise ValueError("candidate checkpoint contains duplicate candidate IDs")
+    unknown = sorted({candidate.seed_id for candidate in candidates} - set(seeds_by_id))
+    if unknown:
+        raise ValueError(f"candidate checkpoint contains unknown seed IDs: {unknown}")
+    completed = set()
+    for seed_id, seed in seeds_by_id.items():
+        count = sum(candidate.seed_id == seed_id for candidate in candidates)
+        if count not in (0, candidates_per_seed):
+            raise ValueError(
+                f"candidate checkpoint has partial seed {seed_id}: "
+                f"{count}/{candidates_per_seed} candidates"
+            )
+        if count:
+            completed.add(seed_id)
+    return completed
+
+
+def _build_dataset_record(candidate, seed) -> dict:
+    interpretation: dict[str, object]
+    expected_parameters: dict[str, object] = {}
+    if seed.outcome == "supported":
+        interpretation = {
+            "status": "valid",
+            "capabilities": seed.capabilities.model_dump(mode="json"),
+        }
+        expected_parameters = {
+            key: value
+            for key, value in seed.expected_template_configuration.items()
+            if key.startswith("nodes.")
+        }
+    elif seed.outcome == "unsupported":
+        interpretation = {
+            "status": "unsupported",
+            "reason": seed.reason,
+        }
+    else:
+        interpretation = {
+            "status": "needs_clarification",
+            "reason": seed.reason,
+            "clarification_question": seed.clarification_question,
+        }
+    return {
+        "id": candidate.candidate_id,
+        "source_seed": seed.id,
+        "mission": candidate.text,
+        "outcome": seed.outcome,
+        "strata": [*seed.strata, candidate.requested_style],
+        "expected_capability_interpretation": interpretation,
+        "expected_parameters": expected_parameters,
+    }
+
+
+def _repair_rejected_candidates(candidates, seeds_by_id, backend,
+                                config: DatasetGenerationConfig) -> None:
     for attempt in range(1, 6):
         rejected_indexes = [
             index
@@ -153,11 +248,11 @@ def _repair_rejected_candidates(candidates, seeds_by_id, backend) -> None:
             replacement = replacements[0]
             replacement.candidate_id = rejected.candidate_id
             candidates[index] = replacement
-            (RAW_DIRECTORY / f"{rejected.candidate_id}-repair-{attempt}.json").write_text(
+            (config.raw_directory / f"{rejected.candidate_id}-repair-{attempt}.json").write_text(
                 raw + "\n", encoding="utf-8"
             )
         automatically_validate_candidates(candidates)
-        write_candidate_history(candidates, CANDIDATE_HISTORY_PATH)
+        write_candidate_history(candidates, config.candidate_history_path)
     rejected_ids = [
         candidate.candidate_id
         for candidate in candidates
@@ -166,18 +261,21 @@ def _repair_rejected_candidates(candidates, seeds_by_id, backend) -> None:
     raise ValueError(f"could not produce unique replacements for {rejected_ids}")
 
 
-def _apply_semantic_review(candidates) -> None:
+def _apply_semantic_review(candidates, config: DatasetGenerationConfig) -> None:
     rejected_records = []
-    if SEMANTIC_REJECTION_PATH.is_file():
-        rejected_records = json.loads(SEMANTIC_REJECTION_PATH.read_text(encoding="utf-8"))
+    if config.semantic_rejection_path.is_file():
+        rejected_records = json.loads(
+            config.semantic_rejection_path.read_text(encoding="utf-8")
+        )
     logged = {
         (record["candidate_id"], record["rejected_text"])
         for record in rejected_records
     }
     for candidate in candidates:
-        rejected_text = SEMANTIC_REJECTIONS.get(candidate.candidate_id)
+        rejected_text = config.semantic_rejections.get(candidate.candidate_id)
         rejected_pair = (candidate.candidate_id, candidate.text)
-        if candidate.text != rejected_text and rejected_pair not in ADDITIONAL_SEMANTIC_REJECTIONS:
+        if (candidate.text != rejected_text
+                and rejected_pair not in config.additional_semantic_rejections):
             continue
         candidate.review = CandidateReview(
             status="rejected",
@@ -197,16 +295,17 @@ def _apply_semantic_review(candidates) -> None:
             )
             logged.add(rejected_pair)
     if rejected_records:
-        SEMANTIC_REJECTION_PATH.write_text(
+        config.semantic_rejection_path.parent.mkdir(parents=True, exist_ok=True)
+        config.semantic_rejection_path.write_text(
             json.dumps(rejected_records, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
 
-def _apply_manual_repairs(candidates) -> None:
+def _apply_manual_repairs(candidates, config: DatasetGenerationConfig) -> None:
     repairs = []
     for candidate in candidates:
-        replacement = MANUAL_REPLACEMENTS.get(candidate.candidate_id)
+        replacement = config.manual_replacements.get(candidate.candidate_id)
         if replacement is None or candidate.text == replacement:
             continue
         repairs.append(
@@ -221,27 +320,46 @@ def _apply_manual_repairs(candidates) -> None:
         candidate.requested_style = "natural"
         candidate.review = CandidateReview()
     if repairs:
-        MANUAL_REPAIR_PATH.write_text(
+        config.manual_repair_path.parent.mkdir(parents=True, exist_ok=True)
+        config.manual_repair_path.write_text(
             json.dumps(repairs, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
 
-def run() -> int:
-    _load_environment()
-    registry = load_capability_registry("configuration_templates/capability_registry.yaml")
-    seeds = load_synthetic_seeds(SEED_PATH, registry)
-    if len(seeds) != EXPECTED_SEEDS:
-        raise ValueError(f"expected {EXPECTED_SEEDS} seeds, found {len(seeds)}")
-    if any(seed.paraphrase_count != EXPECTED_PARAPHRASES_PER_SEED for seed in seeds):
-        raise ValueError("every seed must request exactly ten paraphrases")
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Generate an AntRobot mission dataset from an explicit seed set."
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help="YAML file containing all dataset-generation inputs and output paths.",
+    )
+    return parser
 
-    schema = json.loads(CONFIGURATION_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+def run(config_path: Path) -> int:
+    _load_environment()
+    config = load_generation_config(config_path)
+    registry = load_capability_registry(config.capability_registry_path)
+    seeds = load_synthetic_seeds(config.seed_path, registry)
+    if not seeds:
+        raise ValueError("seed file must contain at least one seed")
+    if not 1 <= config.start_seed_index <= len(seeds):
+        raise ValueError(
+            f"start_seed_index must be between 1 and {len(seeds)}, "
+            f"found {config.start_seed_index}"
+        )
+    expected_records = len(seeds) * config.candidates_per_seed
+
+    schema = json.loads(config.configuration_schema_path.read_text(encoding="utf-8"))
     configuration_keys = set(schema["configuration_keys"])
     expected_parameter_keys = {
         key
         for seed in seeds
-        for key in seed.expected_template_configuration
+        for key in getattr(seed, "expected_template_configuration", {})
         if key.startswith("nodes.")
     }
     unknown_parameter_keys = sorted(expected_parameter_keys - configuration_keys)
@@ -250,57 +368,88 @@ def run() -> int:
 
     backend = OllamaParaphraseBackend(
         host=os.getenv("OLLAMA_HOST_PATH", "10.0.2.2"),
-        model=MODEL,
+        model=config.model,
     )
     seeds_by_id = {seed.id: seed for seed in seeds}
-    if CANDIDATE_HISTORY_PATH.is_file():
-        candidates = load_candidates(CANDIDATE_HISTORY_PATH)
-        expected_seed_ids = set(seeds_by_id)
-        if len(candidates) != EXPECTED_RECORDS or {
-            candidate.seed_id for candidate in candidates
-        } != expected_seed_ids:
-            raise ValueError("existing candidate history does not match the configured seed set")
-        print(f"resuming {len(candidates)} generated candidates", flush=True)
+    if config.candidate_history_path.is_file():
+        candidates = load_candidates(config.candidate_history_path)
+        completed_seed_ids = _validate_partial_history(
+            candidates, seeds_by_id, config.candidates_per_seed
+        )
+        print(
+            f"resuming checkpoint with {len(completed_seed_ids)}/{len(seeds)} seeds "
+            f"and {len(candidates)}/{expected_records} candidates",
+            flush=True,
+        )
     else:
         candidates = []
-    RAW_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    if not candidates:
-        for index, seed in enumerate(seeds, 1):
-            first_batch, first_raw = generate_paraphrases(
-                seed,
-                backend,
-                requested_styles=FIRST_BATCH_STYLES,
-                candidate_series="a",
-            )
-            second_batch, second_raw = generate_paraphrases(
-                seed,
-                backend,
-                requested_styles=SECOND_BATCH_STYLES,
-                candidate_series="b",
-                excluded_texts=[candidate.text for candidate in first_batch],
-            )
-            generated = [*first_batch, *second_batch]
+        completed_seed_ids = set()
+    config.raw_directory.mkdir(parents=True, exist_ok=True)
+    recovered_seed_count = 0
+    for seed in seeds:
+        if seed.id in completed_seed_ids:
+            continue
+        recovered = _candidates_from_raw(seed, config)
+        if recovered is None:
+            continue
+        candidates.extend(recovered)
+        completed_seed_ids.add(seed.id)
+        recovered_seed_count += 1
+    if recovered_seed_count:
+        write_candidate_history(candidates, config.candidate_history_path)
+        print(
+            f"recovered {recovered_seed_count} seeds from raw responses; checkpoint now "
+            f"contains {len(completed_seed_ids)}/{len(seeds)} seeds",
+            flush=True,
+        )
+    for index, seed in enumerate(seeds, 1):
+        if index < config.start_seed_index or seed.id in completed_seed_ids:
+            continue
+        try:
+            generated = []
+            for series, styles in _generation_batches(config):
+                batch, raw = generate_paraphrases(
+                    seed,
+                    backend,
+                    requested_styles=styles,
+                    candidate_series=series,
+                    excluded_texts=[candidate.text for candidate in generated],
+                )
+                generated.extend(batch)
+                (config.raw_directory / f"{seed.id}-batch-{series}.json").write_text(
+                    raw + "\n", encoding="utf-8"
+                )
             for candidate_index, candidate in enumerate(generated, 1):
                 candidate.candidate_id = f"{seed.id}-p{candidate_index:02d}"
-            if len(generated) != EXPECTED_PARAPHRASES_PER_SEED:
+            if len(generated) != config.candidates_per_seed:
                 raise ValueError(
                     f"{seed.id} produced {len(generated)} paraphrases instead of "
-                    f"{EXPECTED_PARAPHRASES_PER_SEED}"
+                    f"{config.candidates_per_seed}"
                 )
             candidates.extend(generated)
-            (RAW_DIRECTORY / f"{seed.id}-batch-a.json").write_text(
-                first_raw + "\n", encoding="utf-8"
+            completed_seed_ids.add(seed.id)
+            write_candidate_history(candidates, config.candidate_history_path)
+            print(f"generated {index}/{len(seeds)}: {seed.id}", flush=True)
+        except Exception:
+            print(
+                f"generation stopped at seed index {index} ({seed.id}); "
+                f"checkpoint contains {len(completed_seed_ids)}/{len(seeds)} completed seeds",
+                flush=True,
             )
-            (RAW_DIRECTORY / f"{seed.id}-batch-b.json").write_text(
-                second_raw + "\n", encoding="utf-8"
-            )
-            print(f"generated {index}/{EXPECTED_SEEDS}: {seed.id}", flush=True)
+            raise
 
-    _apply_manual_repairs(candidates)
+    missing_seed_ids = [seed.id for seed in seeds if seed.id not in completed_seed_ids]
+    if missing_seed_ids:
+        raise ValueError(
+            "generation is incomplete; checkpoint was preserved. Missing seeds: "
+            f"{missing_seed_ids}. Lower start_seed_index or resume from the first missing seed."
+        )
+
+    _apply_manual_repairs(candidates, config)
     automatically_validate_candidates(candidates)
-    _apply_semantic_review(candidates)
-    write_candidate_history(candidates, CANDIDATE_HISTORY_PATH)
-    _repair_rejected_candidates(candidates, seeds_by_id, backend)
+    _apply_semantic_review(candidates, config)
+    write_candidate_history(candidates, config.candidate_history_path)
+    _repair_rejected_candidates(candidates, seeds_by_id, backend, config)
     rejected = [candidate for candidate in candidates if candidate.review.status == "rejected"]
     if rejected:
         summary = [
@@ -308,54 +457,44 @@ def run() -> int:
             for candidate in rejected
         ]
         raise ValueError(f"automatic validation rejected candidates: {summary}")
-    if len(candidates) != EXPECTED_RECORDS:
-        raise ValueError(f"expected {EXPECTED_RECORDS} candidates, found {len(candidates)}")
+    if len(candidates) != expected_records:
+        raise ValueError(f"expected {expected_records} candidates, found {len(candidates)}")
     normalized = [_normalized(candidate.text) for candidate in candidates]
     if len(set(normalized)) != len(normalized):
         raise ValueError("generated paraphrases are not globally unique")
 
-    records = []
-    for candidate in candidates:
-        seed = seeds_by_id[candidate.seed_id]
-        expected_parameters = {
-            key: value
-            for key, value in seed.expected_template_configuration.items()
-            if key.startswith("nodes.")
-        }
-        records.append(
-            {
-                "id": candidate.candidate_id,
-                "source_seed": seed.id,
-                "mission": candidate.text,
-                "expected_capability_interpretation": {
-                    "status": "valid",
-                    "capabilities": seed.capabilities.model_dump(mode="json"),
-                },
-                "expected_parameters": expected_parameters,
-            }
-        )
-    _write_jsonl(records, DATASET_PATH)
+    records = [
+        _build_dataset_record(candidate, seeds_by_id[candidate.seed_id])
+        for candidate in candidates
+    ]
+    _write_jsonl(records, config.dataset_path)
 
     metadata = {
         "schema_version": "1.0",
-        "generator_model": MODEL,
-        "model_generated_record_count": EXPECTED_RECORDS - len(MANUAL_REPLACEMENTS),
-        "manually_repaired_record_count": len(MANUAL_REPLACEMENTS),
+        "generator_model": config.model,
+        "model_generated_record_count": expected_records - len(config.manual_replacements),
+        "manually_repaired_record_count": len(config.manual_replacements),
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "seed_file": str(SEED_PATH),
-        "dataset_file": str(DATASET_PATH),
+        "seed_file": str(config.seed_path),
+        "dataset_file": str(config.dataset_path),
         "seed_count": len(seeds),
-        "paraphrases_per_seed": EXPECTED_PARAPHRASES_PER_SEED,
+        "paraphrases_per_seed": config.candidates_per_seed,
         "record_count": len(records),
+        "outcome_counts": {
+            outcome: sum(seed.outcome == outcome for seed in seeds)
+            * config.candidates_per_seed
+            for outcome in ("supported", "unsupported", "ambiguous")
+        },
         "ground_truth_source": "repository-grounded seed annotations",
         "ground_truth_generated_by_model": False,
         "paraphrase_review_status": "assistant_reviewed_pending_author_review",
-        "candidate_history": str(CANDIDATE_HISTORY_PATH),
-        "raw_response_directory": str(RAW_DIRECTORY),
-        "semantic_rejection_log": str(SEMANTIC_REJECTION_PATH),
-        "manual_repair_log": str(MANUAL_REPAIR_PATH),
+        "candidate_history": str(config.candidate_history_path),
+        "raw_response_directory": str(config.raw_directory),
+        "semantic_rejection_log": str(config.semantic_rejection_path),
+        "manual_repair_log": str(config.manual_repair_path),
     }
-    METADATA_PATH.write_text(
+    config.metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    config.metadata_path.write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(json.dumps(metadata, indent=2, sort_keys=True))
@@ -363,4 +502,4 @@ def run() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    raise SystemExit(run(_parser().parse_args().config))

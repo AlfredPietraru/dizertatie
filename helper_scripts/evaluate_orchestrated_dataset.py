@@ -28,12 +28,6 @@ from ros_config_builder.orchestrate import (
 
 
 DEFAULT_OUTPUT = Path("artifacts/evaluation/orchestrated")
-DEFAULT_DATASETS = (
-    Path("data/evaluation_missions.jsonl"),
-    Path("data/antrobot_mission_dataset_v1.jsonl"),
-)
-
-
 class _RecordingBackend:
     """Transparent backend wrapper retaining the exact prompt and raw LLM response."""
 
@@ -81,8 +75,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--configuration", type=Path, default=DEFAULT_CONFIGURATION_PATH)
     parser.add_argument(
-        "--dataset", type=Path, action="append",
-        help="JSONL dataset; repeat to compare runs (defaults to evaluation + generated).",
+        "--dataset", type=Path, action="append", required=True,
+        help="JSONL dataset; repeat the option to compare multiple datasets.",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=None)
@@ -805,7 +799,7 @@ def main() -> int:
     configuration = load_application_configuration(args.configuration)
     if configuration.operation != "mission":
         raise SystemExit("evaluation requires operation='mission' in the configuration")
-    datasets = args.dataset or list(DEFAULT_DATASETS)
+    datasets = args.dataset
     reports = []
     for path in datasets:
         reports.append(evaluate_dataset(

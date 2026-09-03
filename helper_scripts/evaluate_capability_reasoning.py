@@ -68,11 +68,15 @@ def _expected(case: dict[str, Any]) -> dict[str, Any]:
     status = raw.get("status")
     if status not in {"valid", "unsupported", "needs_clarification"}:
         raise ValueError(f"invalid expected capability status {status!r}")
-    capabilities = raw.get("capabilities", {}) if status == "valid" else {}
-    validated = CapabilitySelections.model_validate(capabilities)
+    if status == "valid":
+        capabilities = CapabilitySelections.model_validate(
+            raw.get("capabilities", {})
+        ).model_dump(mode="json")
+    else:
+        capabilities = {}
     return {
         "status": status,
-        "capabilities": _sparse(validated.model_dump(mode="json")),
+        "capabilities": _sparse(capabilities),
     }
 
 
@@ -149,7 +153,8 @@ def _write_failure(output: Path, record: dict[str, Any], system_prompt: str) -> 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
-    parser.add_argument("--dataset", type=Path, default=Path("data/antrobot_mission_dataset_v1.jsonl"))
+    parser.add_argument("--dataset", type=Path, required=True,
+                        help="Training or test JSONL dataset to evaluate.")
     parser.add_argument("--output", type=Path, default=Path("artifacts/capability_reasoning/intrinsic_v1"))
     parser.add_argument("--model", default="qwen2.5-coder:7b")
     parser.add_argument("--host", default=None)

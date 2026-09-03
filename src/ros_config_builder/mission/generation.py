@@ -141,7 +141,21 @@ def generate_paraphrases(seed: SyntheticSeed, backend: ParaphraseBackend, *,
     except ValueError as error: raise ValueError(f"malformed generated batch for {seed.id}: {error}") from error
     returned = [item.requested_style for item in batch.candidates]
     if returned != styles:
-        raise ValueError(f"{seed.id} returned styles {returned}, expected {styles}")
+        # Some models over-generate several alternatives for every requested style.
+        # Retain one deterministic candidate per requested slot, but remain strict
+        # when a requested style is absent.
+        remaining = list(batch.candidates)
+        selected = []
+        for style in styles:
+            match = next(
+                (index for index, item in enumerate(remaining)
+                 if item.requested_style == style),
+                None,
+            )
+            if match is None:
+                raise ValueError(f"{seed.id} returned styles {returned}, expected {styles}")
+            selected.append(remaining.pop(match))
+        batch = GeneratedBatch(candidates=selected)
     candidates = [SyntheticCandidate(candidate_id=f"{seed.id}-{candidate_series}{index:02d}", seed_id=seed.id,
         outcome=seed.outcome, requested_style=item.requested_style, text=item.text.strip(),
         generator_model=backend.model, prompt_version="paraphrase_v2_replacement" if replacement else "paraphrase_v1")

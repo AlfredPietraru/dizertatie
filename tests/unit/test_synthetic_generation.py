@@ -20,7 +20,26 @@ class FakeBackend:
                                           for style in styles]})
 
 
+class OverGeneratingBackend:
+    model = "fake"
+    def __call__(self, _system: str, user: str) -> str:
+        styles = json.loads(user.split("Requested styles in order:\n", 1)[1])
+        return json.dumps({"candidates": [
+            {"requested_style": style, "text": f"First {style} candidate"}
+            for style in styles for _ in range(3)
+        ]})
+
+
 class SyntheticGenerationTests(unittest.TestCase):
+    def test_generation_keeps_one_candidate_per_style_when_model_over_generates(self) -> None:
+        registry = load_capability_registry("configuration_templates/capability_registry.yaml")
+        seed = load_synthetic_seeds("data/antrobot_test_seed_missions_v1.jsonl", registry)[0]
+        candidates, _ = generate_paraphrases(
+            seed, OverGeneratingBackend(), requested_styles=["canonical", "natural"]
+        )
+        self.assertEqual([item.requested_style for item in candidates], ["canonical", "natural"])
+        self.assertEqual(len(candidates), 2)
+
     def test_generation_validation_review_and_freeze(self) -> None:
         registry = load_capability_registry("configuration_templates/capability_registry.yaml")
         seed = load_synthetic_seeds("data/synthetic_seed_intents_v1.jsonl", registry)[0]

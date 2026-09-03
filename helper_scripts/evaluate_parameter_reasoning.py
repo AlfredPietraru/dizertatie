@@ -293,8 +293,8 @@ def _digest(path: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
-    parser.add_argument("--dataset", type=Path,
-                        default=Path("data/parameter_reasoning_tasks_v1.jsonl"))
+    parser.add_argument("--dataset", type=Path, required=True,
+                        help="Training or test JSONL dataset to evaluate.")
     parser.add_argument("--output", type=Path,
                         default=Path("artifacts/parameter_reasoning/ablation_v1"))
     parser.add_argument("--model", default="qwen2.5-coder:7b")

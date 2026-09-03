@@ -1,0 +1,28 @@
+# model: qwen2.5-coder:7b
+model: mistral:7b
+candidates_per_seed: 2
+start_seed_index: 1
+seed_path: data/antrobot_test_seed_missions_v1.jsonl
+dataset_path: data/antrobot_test_mission_dataset_v1.jsonl
+metadata_path: data/antrobot_test_mission_dataset_v1.metadata.json
+configuration_schema_path: artifacts/template_configuration/template_configuration_schema.json
+capability_registry_path: configuration_templates/capability_registry.yaml
+candidate_history_path: artifacts/dataset_generation/antrobot_test_missions_v1/candidates.jsonl
+raw_directory: artifacts/dataset_generation/antrobot_test_missions_v1/raw
+semantic_rejection_path: artifacts/dataset_generation/antrobot_test_missions_v1/semantic_rejections.json
+manual_repair_path: artifacts/dataset_generation/antrobot_test_missions_v1/manual_repairs.json
+first_batch_styles:
+  - canonical
+  - natural
+  - shorthand
+  - imperative
+  - negative_phrasing
+  - multi_clause
+second_batch_styles:
+  - natural
+  - shorthand
+  - imperative
+  - multi_clause
+semantic_rejections: {}
+additional_semantic_rejections: []
+manual_replacements: {}

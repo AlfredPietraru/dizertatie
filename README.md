@@ -139,3 +139,24 @@ The current 40-task parameter dataset is marked `pending_human_review`; the eval
 - [Step 6: retrieval, selection, and value reasoning](docs/step_6_parameter_reasoning.md)
 - [Step 7: validation and plan construction](docs/step_7_parameter_validation_and_plan.md)
 - [Step 8: rendering](docs/step_8_rendering.md)
+
+## The entire pipeline:
+PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --output artifacts/evaluation/train
+
+PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --output artifacts/evaluation/test
+
+
+## Only the capability reasoning:
+PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --output artifacts/capability_reasoning/train_second
+
+PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --output artifacts/capability_reasoning/test_initial
