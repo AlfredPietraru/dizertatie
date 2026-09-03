@@ -97,6 +97,9 @@ class OllamaParaphraseBackend:
 SYSTEM_PROMPT = """You generate natural-language mission variations from a human-verified structured intent.
 Do not solve or alter the intent. Express exactly the supplied requirements: add nothing, remove nothing, and do not fill unspecified choices.
 For unsupported and ambiguous seeds, express the problematic request itself; do not explain, reject, answer, or clarify it.
+Preserve every number, unit, negation, capability, and algorithm exactly in meaning. Never convert a frequency into a period or change a physical unit's magnitude.
+Never invent component names, algorithms, launch flags, parameter values, defaults, exclusions, or implementation details absent from intent_description.
+For capability-only intents, do not add parameter assignments. Shorthand must remain unambiguous and must use established component names without abbreviating them.
 Return only the requested structured JSON. Each candidate must use its assigned linguistic style."""
 
 REPLACEMENT_SYSTEM_PROMPT = """You generate direct user mission requests from a verified structured intent.
@@ -116,7 +119,16 @@ def build_generation_prompt(
     excluded_texts: list[str] | None = None,
 ) -> tuple[str, list[LinguisticStyle]]:
     styles = requested_styles or _styles(seed.paraphrase_count)
-    payload = seed.model_dump(mode="json")
+    # Do not expose renderer configuration to the paraphraser. Models otherwise
+    # tend to turn inferred launch flags and defaults into new user requirements.
+    payload = {
+        "id": seed.id,
+        "outcome": seed.outcome,
+        "intent_description": seed.intent_description,
+        "strata": seed.strata,
+    }
+    if seed.outcome != "supported":
+        payload["category"] = seed.category
     prompt = (
         "Generate one mission sentence for each requested style. Preserve the structured intent exactly.\n\n"
         f"Seed:\n{json.dumps(payload, indent=2, sort_keys=True)}\n\n"
@@ -188,6 +200,179 @@ def automatically_validate_candidates(candidates: list[SyntheticCandidate]) -> l
     return candidates
 
 
+_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+    "ninety": 90,
+}
+_NUMBER_PATTERN = (
+    r"(?:\d+(?:\.\d+)?|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|and|"
+    r"a|half|quarter)(?:[\s-]+(?:zero|one|two|three|four|five|six|seven|eight|nine|"
+    r"ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|and|a|"
+    r"half|quarter)){0,5})"
+)
+_MEASUREMENT = re.compile(
+    rf"(?P<number>{_NUMBER_PATTERN})\s*(?P<unit>\b(?:hz|hertz|milliseconds?|ms|seconds?|secs?|"
+    r"times?\s+per\s+second|updates?\s+per\s+second|millimet(?:er|re)s?|mm|"
+    r"centimet(?:er|re)s?|cm|met(?:er|re)s?|counts?|pulses?))\b",
+    re.I,
+)
+
+
+def _number_value(text: str) -> float | None:
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    words = text.casefold().replace("-", " ").split()
+    total = current = 0.0
+    for index, word in enumerate(words):
+        if word == "and":
+            continue
+        if word == "a" and index + 1 < len(words) and words[index + 1] in {"half", "quarter"}:
+            continue
+        if word == "a":
+            current += 1
+        elif word == "half":
+            current += 0.5
+        elif word == "quarter":
+            current += 0.25
+        elif word in _NUMBER_WORDS:
+            current += _NUMBER_WORDS[word]
+        elif word == "hundred":
+            current = max(current, 1) * 100
+        elif word == "thousand":
+            total += max(current, 1) * 1000
+            current = 0
+        else:
+            return None
+    return total + current
+
+
+def _quantities(text: str) -> list[tuple[str, float]]:
+    result = []
+    for match in _MEASUREMENT.finditer(text):
+        value = _number_value(match.group("number"))
+        if value is None:
+            continue
+        unit = match.group("unit").casefold()
+        prefix = text[max(0, match.start() - 18):match.start()].casefold()
+        if unit in {"hz", "hertz", "time per second", "times per second",
+                    "update per second", "updates per second"}:
+            result.append(("frequency", value))
+        elif unit in {"millisecond", "milliseconds", "ms"}:
+            result.append(("frequency", 1000.0 / value if value else 0.0))
+        elif unit in {"second", "seconds", "sec", "secs"} and re.search(r"(?:every|once)\s*$", prefix):
+            result.append(("frequency", 1.0 / value if value else 0.0))
+        elif unit in {"millimeter", "millimeters", "millimetre", "millimetres", "mm"}:
+            result.append(("length", value / 1000.0))
+        elif unit in {"centimeter", "centimeters", "centimetre", "centimetres", "cm"}:
+            result.append(("length", value / 100.0))
+        elif unit in {"meter", "meters", "metre", "metres"}:
+            result.append(("length", value))
+        elif unit.startswith(("count", "pulse")):
+            result.append(("count", value))
+    return result
+
+
+def semantic_validation_issues(candidate: SyntheticCandidate, seed: SyntheticSeed) -> list[str]:
+    """Return deterministic evidence of intent drift; an empty list means no proven drift."""
+    text = candidate.text.casefold()
+    issues = []
+    unknown_identifiers = set(re.findall(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b", text)) - {
+        "explore_lite", "kinematic_icp", "kiss_icp", "laserscan_to_pointcloud",
+        "joint_state_estimator", "rdrive_node", "joint_state", "publish_frequency",
+        "planner_frequency", "publish_rate", "max_range", "wheel_radius",
+        "wheel_separation", "encoder_cpr_left", "encoder_cpr_right",
+    }
+    if unknown_identifiers:
+        issues.append(f"invented identifiers: {sorted(unknown_identifiers)}")
+    if seed.outcome != "supported":
+        return issues
+
+    expected_parameters = {
+        key: value for key, value in seed.expected_template_configuration.items()
+        if key.startswith("nodes.") and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+    }
+    quantities = _quantities(candidate.text)
+    bare_numbers = [float(value) for value in re.findall(r"(?<![\w.])-?\d+(?:\.\d+)?", text)]
+    expected_values = list(expected_parameters.values())
+    if not expected_values and quantities:
+        issues.append(f"added numeric requirement: {quantities}")
+    for key, expected in expected_parameters.items():
+        kind = (
+            "frequency" if key.endswith(("frequency", "publish_rate"))
+            else "length" if key.endswith(("range", "radius", "separation"))
+            else "count"
+        )
+        typed = [value for quantity_kind, value in quantities if quantity_kind == kind]
+        candidates = typed if quantities else bare_numbers
+        if not any(abs(float(expected) - value) <= 1e-6 for value in candidates):
+            issues.append(f"numeric meaning differs for {key}: expected {expected}, found {candidates}")
+
+    def polarities(term: str) -> set[str]:
+        found = set()
+        for match in re.finditer(rf"\b{re.escape(term)}\b", text):
+            before = text[max(0, match.start() - 24):match.start()]
+            after = text[match.end():match.end() + 24]
+            negative = bool(re.search(
+                r"(?:disable|without|skip|no|not)\s+(?:\w+[\s_-]+){0,2}$", before,
+            ))
+            negative |= bool(re.search(r"^\s*(?:->|=|is|should be)?\s*(?:off|false|disabled)\b", after))
+            positive = bool(re.search(
+                r"(?:enable|activate|launch|use|run|with)\s+(?:\w+[\s_-]+){0,2}$", before,
+            ))
+            if negative and positive:
+                found.add("conflicting")
+            elif negative:
+                found.add("negative")
+            elif positive:
+                found.add("positive")
+        return found
+
+    capabilities = seed.capabilities
+    checks = {
+        "cartographer": capabilities.mapping == "cartographer",
+        "nav2": capabilities.navigation == "nav2",
+        "explore_lite": capabilities.exploration == "explore_lite",
+        "kinematic_icp": capabilities.odometry == "kinematic_icp",
+        "kiss_icp": capabilities.odometry == "kiss_icp",
+    }
+    for term, enabled in checks.items():
+        polarity = polarities(term)
+        if "conflicting" in polarity:
+            issues.append(f"conflicting wording for {term}")
+        elif enabled and "negative" in polarity:
+            issues.append(f"disables required capability {term}")
+        elif not enabled and "positive" in polarity:
+            issues.append(f"enables excluded capability {term}")
+    return issues
+
+
+def semantically_validate_candidates(
+    candidates: list[SyntheticCandidate], seeds_by_id: dict[str, SyntheticSeed],
+) -> list[SyntheticCandidate]:
+    for candidate in candidates:
+        if candidate.review.status == "rejected":
+            continue
+        issues = semantic_validation_issues(candidate, seeds_by_id[candidate.seed_id])
+        if issues:
+            candidate.review = CandidateReview(
+                status="rejected", semantic_equivalence=False,
+                natural_language_quality="unacceptable", rejection_reason="semantic_drift",
+                notes="; ".join(issues), reviewer="deterministic-semantic-validator",
+            )
+    return candidates
+
+
 def write_candidate_history(candidates: list[SyntheticCandidate], path: str | Path) -> None:
     output = Path(path); output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(item.model_dump(mode="json"), sort_keys=True) + "\n"
@@ -230,7 +415,10 @@ def freeze_accepted_dataset(candidates: list[SyntheticCandidate], seeds: list[Sy
     return len(accepted)
 
 
-def dataset_quality_report(candidates: list[SyntheticCandidate], seeds: list[SyntheticSeed]) -> dict:
+def dataset_quality_report(
+    candidates: list[SyntheticCandidate], seeds: list[SyntheticSeed], *,
+    candidates_per_seed: int | None = None,
+) -> dict:
     seed_by_id = {seed.id: seed for seed in seeds}
     accepted = [item for item in candidates if item.review.status == "accepted"]
     rejected = [item for item in candidates if item.review.status == "rejected"]
@@ -253,7 +441,11 @@ def dataset_quality_report(candidates: list[SyntheticCandidate], seeds: list[Syn
                                if candidates else 0.0,
         "accepted_target_comparison": {
             outcome: {"accepted": outcome_counts[outcome],
-                      "generated_target": sum(seed.paraphrase_count for seed in seeds if seed.outcome == outcome)}
+                      "generated_target": sum(
+                          candidates_per_seed if candidates_per_seed is not None
+                          else seed.paraphrase_count
+                          for seed in seeds if seed.outcome == outcome
+                      )}
             for outcome in ("supported", "unsupported", "ambiguous")
         },
         "seed_integrity": all(item.seed_id in seed_by_id for item in candidates),

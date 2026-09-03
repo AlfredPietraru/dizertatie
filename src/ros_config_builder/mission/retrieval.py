@@ -81,6 +81,11 @@ def _tokens(value: Any) -> list[str]:
             if token not in _STOP_WORDS and len(token) > 1]
 
 
+def _contains_phrase(haystack: str, phrase: str) -> bool:
+    """Word-boundary containment: reject "map" inside "mapping"."""
+    return bool(phrase) and f" {phrase} " in f" {haystack} "
+
+
 def _evidence_ids(parameter: AvailableParameter) -> list[str]:
     if not parameter.evidence:
         return []
@@ -224,19 +229,25 @@ def retrieve_parameters(
                     continue
                 matched_fields.add(field)
                 inverse_frequency = math.log((total + 1) / (document_frequency[token] + 0.5)) + 1.0
+                # A bare component/node-name mention (e.g. "run Cartographer") should not by
+                # itself make every parameter under that node look relevant - components are
+                # already resolved by the capability-interpretation stage, not this one.
                 field_weight = {"identifier": 3.0, "name": 2.5, "description": 1.8,
-                                "behavioral_effect": 1.6, "source": 1.2}.get(field, 1.0)
+                                "behavioral_effect": 1.6, "source": 1.2,
+                                "component": 0.2}.get(field, 1.0)
                 score += inverse_frequency * field_weight * (1.0 + math.log(count))
         short_name = identifier.rsplit(".", 1)[-1]
         exact = variant != "llm_semantic" and (
-            _normalize_text(identifier) in normalized_query
-            or _normalize_text(short_name) in normalized_query
-            or _normalize_text(parameter.semantic_name) in normalized_query
+            _contains_phrase(normalized_query, _normalize_text(identifier))
+            or _contains_phrase(normalized_query, _normalize_text(short_name))
+            or _contains_phrase(normalized_query, _normalize_text(parameter.semantic_name))
         )
         if exact:
             score += 100.0
             matched_fields.add("exact_name")
-        if score > 0:
+        # A candidate matched only on its owning component/node name carries no evidence that
+        # this specific parameter (as opposed to any other one on the same node) is relevant.
+        if score > 0 and matched_fields != {"component"}:
             scored.append((score, identifier, sorted(matched_fields), "exact" if exact else "lexical"))
     scored.sort(key=lambda item: (-item[0], item[1]))
     selected = scored[:top_k]

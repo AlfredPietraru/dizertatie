@@ -19,6 +19,7 @@ from ros_config_builder.mission import (
     build_parameter_selection_system_context,
     derive_parameter_catalogue, realize_capabilities,
     resolve_ros_orchestration, retrieve_parameters,
+    validate_frozen_dataset,
 )
 from ros_config_builder.mission.inference import extract_json_object
 from ros_config_builder.orchestrate import (
@@ -80,6 +81,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--allow-unfrozen-dataset", action="store_true",
+                        help="Development only: evaluate datasets without frozen metadata.")
     return parser
 
 
@@ -494,13 +497,6 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
         "dataset": str(path), "fingerprint": fingerprint,
         "limit": limit, "status": "in_progress",
     }
-    if checkpoint_path.is_file():
-        existing_checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        if (existing_checkpoint.get("fingerprint") != fingerprint
-                or existing_checkpoint.get("limit") != limit):
-            raise ValueError(
-                f"cannot resume {output}: dataset, prompts, configuration, or limit changed"
-            )
     checkpoint_path.write_text(
         json.dumps(checkpoint, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -800,6 +796,8 @@ def main() -> int:
     if configuration.operation != "mission":
         raise SystemExit("evaluation requires operation='mission' in the configuration")
     datasets = args.dataset
+    for dataset in datasets:
+        validate_frozen_dataset(dataset, allow_unfrozen=args.allow_unfrozen_dataset)
     reports = []
     for path in datasets:
         reports.append(evaluate_dataset(

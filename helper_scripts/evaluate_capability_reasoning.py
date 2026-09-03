@@ -17,6 +17,7 @@ from ros_config_builder.mission import (
     OllamaBackend,
     build_interpretation_prompt,
     load_capability_registry,
+    validate_frozen_dataset,
 )
 from ros_config_builder.orchestrate import load_environment
 
@@ -164,6 +165,8 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("configuration_templates/capability_registry.yaml"),
     )
     parser.add_argument("--limit", type=int, default=None, help="Run only the first N cases.")
+    parser.add_argument("--allow-unfrozen-dataset", action="store_true",
+                        help="Development only: evaluate a dataset without frozen metadata.")
     return parser
 
 
@@ -173,6 +176,7 @@ def main() -> int:
     load_environment(workspace / ".env")
     resolve = lambda path: path if path.is_absolute() else workspace / path
     dataset, output, prompt_path = resolve(args.dataset), resolve(args.output), resolve(args.prompt)
+    validate_frozen_dataset(dataset, allow_unfrozen=args.allow_unfrozen_dataset)
     registry_path = resolve(args.capability_registry)
     registry = load_capability_registry(registry_path)
     system_prompt = build_interpretation_prompt(prompt_path.read_text(encoding="utf-8"), registry)

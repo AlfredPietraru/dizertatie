@@ -143,11 +143,11 @@ The current 40-task parameter dataset is marked `pending_human_review`; the eval
 ## The entire pipeline:
 PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
   --dataset data/antrobot_train_mission_dataset_v1.jsonl \
-  --output artifacts/evaluation/train
+  --output artifacts/evaluation/train_v1
 
 PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
   --dataset data/antrobot_test_mission_dataset_v1.jsonl \
-  --output artifacts/evaluation/test
+  --output artifacts/evaluation/test_v1
 
 
 ## Only the capability reasoning:

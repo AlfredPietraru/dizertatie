@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -21,7 +22,11 @@ from ros_config_builder.mission import (
     load_capability_registry,
     load_candidates,
     load_synthetic_seeds,
+    dataset_quality_report,
+    semantically_validate_candidates,
     write_candidate_history,
+    write_quality_report,
+    write_review_queue,
 )
 from ros_config_builder.mission.generation import GeneratedBatch, SyntheticCandidate
 
@@ -45,6 +50,9 @@ class DatasetGenerationConfig:
     additional_semantic_rejections: set[tuple[str, str]]
     manual_replacements: dict[str, str]
     start_seed_index: int
+    review_queue_path: Path
+    quality_report_directory: Path
+    require_human_review: bool
 
 
 def load_generation_config(path: Path) -> DatasetGenerationConfig:
@@ -58,6 +66,7 @@ def load_generation_config(path: Path) -> DatasetGenerationConfig:
         "manual_repair_path", "first_batch_styles", "second_batch_styles",
         "semantic_rejections", "additional_semantic_rejections", "manual_replacements",
         "start_seed_index", "candidates_per_seed",
+        "review_queue_path", "quality_report_directory", "require_human_review",
     }
     missing = sorted(required - raw.keys())
     unknown = sorted(raw.keys() - required)
@@ -75,6 +84,8 @@ def load_generation_config(path: Path) -> DatasetGenerationConfig:
             f"candidates_per_seed={candidates_per_seed} exceeds the "
             f"{available_styles} configured style slots"
         )
+    if not isinstance(raw["require_human_review"], bool):
+        raise ValueError("require_human_review must be true or false")
     return DatasetGenerationConfig(
         model=str(raw["model"]),
         candidates_per_seed=candidates_per_seed,
@@ -95,6 +106,9 @@ def load_generation_config(path: Path) -> DatasetGenerationConfig:
         },
         manual_replacements=dict(raw["manual_replacements"]),
         start_seed_index=int(raw["start_seed_index"]),
+        review_queue_path=Path(raw["review_queue_path"]),
+        quality_report_directory=Path(raw["quality_report_directory"]),
+        require_human_review=raw["require_human_review"],
     )
 
 
@@ -168,6 +182,15 @@ def _validate_partial_history(candidates, seeds_by_id, candidates_per_seed: int)
     unknown = sorted({candidate.seed_id for candidate in candidates} - set(seeds_by_id))
     if unknown:
         raise ValueError(f"candidate checkpoint contains unknown seed IDs: {unknown}")
+    mismatched = sorted({
+        candidate.seed_id for candidate in candidates
+        if candidate.outcome != seeds_by_id[candidate.seed_id].outcome
+    })
+    if mismatched:
+        raise ValueError(
+            "candidate checkpoint outcomes differ from corrected seed annotations: "
+            f"{mismatched}"
+        )
     completed = set()
     for seed_id, seed in seeds_by_id.items():
         count = sum(candidate.seed_id == seed_id for candidate in candidates)
@@ -218,6 +241,9 @@ def _build_dataset_record(candidate, seed) -> dict:
 
 def _repair_rejected_candidates(candidates, seeds_by_id, backend,
                                 config: DatasetGenerationConfig) -> None:
+    repair_records = []
+    if config.manual_repair_path.is_file():
+        repair_records = json.loads(config.manual_repair_path.read_text(encoding="utf-8"))
     for attempt in range(1, 6):
         rejected_indexes = [
             index
@@ -247,11 +273,26 @@ def _repair_rejected_candidates(candidates, seeds_by_id, backend,
             )
             replacement = replacements[0]
             replacement.candidate_id = rejected.candidate_id
+            repair_records.append({
+                "candidate_id": rejected.candidate_id,
+                "replaced_text": rejected.text,
+                "replacement_text": replacement.text,
+                "reason": rejected.review.rejection_reason,
+                "validation_notes": rejected.review.notes,
+                "repair_attempt": attempt,
+                "repair_kind": "model_regeneration",
+            })
             candidates[index] = replacement
             (config.raw_directory / f"{rejected.candidate_id}-repair-{attempt}.json").write_text(
                 raw + "\n", encoding="utf-8"
             )
+        config.manual_repair_path.parent.mkdir(parents=True, exist_ok=True)
+        config.manual_repair_path.write_text(
+            json.dumps(repair_records, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         automatically_validate_candidates(candidates)
+        semantically_validate_candidates(candidates, seeds_by_id)
         write_candidate_history(candidates, config.candidate_history_path)
     rejected_ids = [
         candidate.candidate_id
@@ -447,6 +488,7 @@ def run(config_path: Path) -> int:
 
     _apply_manual_repairs(candidates, config)
     automatically_validate_candidates(candidates)
+    semantically_validate_candidates(candidates, seeds_by_id)
     _apply_semantic_review(candidates, config)
     write_candidate_history(candidates, config.candidate_history_path)
     _repair_rejected_candidates(candidates, seeds_by_id, backend, config)
@@ -463,14 +505,36 @@ def run(config_path: Path) -> int:
     if len(set(normalized)) != len(normalized):
         raise ValueError("generated paraphrases are not globally unique")
 
+    quality_paths = write_quality_report(
+        dataset_quality_report(
+            candidates, seeds, candidates_per_seed=config.candidates_per_seed,
+        ),
+        config.quality_report_directory,
+    )
+    pending = [candidate for candidate in candidates if candidate.review.status == "pending"]
+    if pending and config.require_human_review:
+        write_review_queue(candidates, seeds, config.review_queue_path)
+        print(json.dumps({
+            "status": "pending_human_review",
+            "pending_candidates": len(pending),
+            "review_queue": str(config.review_queue_path),
+            "candidate_history": str(config.candidate_history_path),
+            "quality_reports": {key: str(value) for key, value in quality_paths.items()},
+        }, indent=2))
+        return 0
+    if any(candidate.review.status != "accepted" for candidate in candidates):
+        raise ValueError("dataset can only be frozen when every candidate is accepted")
+
     records = [
         _build_dataset_record(candidate, seeds_by_id[candidate.seed_id])
         for candidate in candidates
     ]
     _write_jsonl(records, config.dataset_path)
+    dataset_sha256 = hashlib.sha256(config.dataset_path.read_bytes()).hexdigest()
 
     metadata = {
         "schema_version": "1.0",
+        "dataset_status": "frozen",
         "generator_model": config.model,
         "model_generated_record_count": expected_records - len(config.manual_replacements),
         "manually_repaired_record_count": len(config.manual_replacements),
@@ -480,6 +544,7 @@ def run(config_path: Path) -> int:
         "seed_count": len(seeds),
         "paraphrases_per_seed": config.candidates_per_seed,
         "record_count": len(records),
+        "dataset_sha256": dataset_sha256,
         "outcome_counts": {
             outcome: sum(seed.outcome == outcome for seed in seeds)
             * config.candidates_per_seed
@@ -487,7 +552,7 @@ def run(config_path: Path) -> int:
         },
         "ground_truth_source": "repository-grounded seed annotations",
         "ground_truth_generated_by_model": False,
-        "paraphrase_review_status": "assistant_reviewed_pending_author_review",
+        "paraphrase_review_status": "human_verified",
         "candidate_history": str(config.candidate_history_path),
         "raw_response_directory": str(config.raw_directory),
         "semantic_rejection_log": str(config.semantic_rejection_path),

@@ -23,6 +23,7 @@ from ros_config_builder.mission import (
     resolve_ros_orchestration, write_parameter_evaluation_report,
     semantic_enrichment_artifact_matches,
     validate_capability_registry,
+    validate_frozen_dataset,
 )
 from ros_config_builder.orchestrate import load_environment
 from ros_config_builder.templating import TemplateConfigurationSchema, TemplateManifest
@@ -128,8 +129,15 @@ def _progress_logger(
     selection_backend: _LoggingBackend,
     value_backend: _LoggingBackend,
     capability_backend: _LoggingBackend | None = None,
+    checkpoint_path: Path | None = None,
+    initial_records: list[dict[str, object]] | None = None,
 ):
-    counts = {"completed": 0, "errors": 0, "correct": 0}
+    saved = initial_records or []
+    counts = {
+        "completed": len(saved),
+        "errors": sum(record.get("error") is not None for record in saved),
+        "correct": sum(bool(record.get("end_to_end_correct")) for record in saved),
+    }
     call_offsets = {"parameter_selection": 0, "parameter_value": 0}
     capability_offset = 0
     expected_result: dict[str, object] = {}
@@ -151,6 +159,11 @@ def _progress_logger(
         counts["completed"] += 1
         counts["errors"] += int(event["status"] == "error")
         counts["correct"] += int(bool(event["end_to_end_correct"]))
+        if checkpoint_path is not None:
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            with checkpoint_path.open("a", encoding="utf-8") as checkpoint:
+                checkpoint.write(json.dumps(event["record"], sort_keys=True) + "\n")
+                checkpoint.flush()
         if not event["end_to_end_correct"]:
             record = event["record"]
             selection_calls = selection_backend.records[call_offsets["parameter_selection"]:]
@@ -198,6 +211,34 @@ def _progress_logger(
         )
 
     return log
+
+
+def _load_parameter_checkpoint(path: Path) -> list[dict[str, object]]:
+    if not path.is_file():
+        return []
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _prepare_parameter_checkpoint(
+    path: Path, predictions_path: Path, fingerprint: dict[str, object],
+) -> None:
+    if path.is_file():
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing.get("fingerprint") != fingerprint:
+            raise ValueError(
+                f"cannot resume {path.parent}: dataset, model, prompts, or settings changed"
+            )
+    elif predictions_path.is_file():
+        raise ValueError(
+            f"cannot safely resume {predictions_path} without its checkpoint metadata"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "status": "in_progress", "fingerprint": fingerprint,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 class _CapabilityConditionedReasoner:
@@ -286,6 +327,46 @@ class _GroundTruthConditionedReasoner:
         )
 
 
+class _DatasetConditionedReasoner:
+    """Build intrinsic catalogues from generated-dataset capability gold."""
+
+    def __init__(
+        self, reasoner: ParameterReasoner, *, capabilities_by_mission,
+        registry, schema, evidence_by_id, enrichments, system_model, manifest,
+    ) -> None:
+        self.reasoner = reasoner
+        self.capabilities_by_mission = capabilities_by_mission
+        self.registry = registry
+        self.schema = schema
+        self.evidence_by_id = evidence_by_id
+        self.enrichments = enrichments
+        self.system_model = system_model
+        self.manifest = manifest
+        self.context_variant = reasoner.context_variant
+
+    def reason(self, mission: str, _catalogue, **_kwargs):
+        capabilities = self.capabilities_by_mission.get(mission)
+        if capabilities is None:
+            raise ValueError("generated dataset has no capability gold for this mission")
+        realization = realize_capabilities(capabilities, self.registry)
+        orchestration = resolve_ros_orchestration(
+            realization, self.registry, self.system_model, self.manifest,
+        )
+        if orchestration.status == "invalid":
+            raise ValueError("gold capability realization has unsatisfied ROS connections")
+        catalogue = derive_parameter_catalogue(
+            realization, self.schema, evidence_by_id=self.evidence_by_id,
+            semantic_enrichments=self.enrichments,
+        )
+        return self.reasoner.reason(
+            mission, catalogue,
+            system_context=build_parameter_selection_system_context(
+                orchestration.model_dump(mode="json"),
+            ),
+            wiring_bindings=self.manifest.get("wiring_bindings", {}),
+        )
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -311,6 +392,8 @@ def main() -> int:
     parser.add_argument("--graph-hops", type=int, default=1)
     parser.add_argument("--include-no-change", action="store_true")
     parser.add_argument("--allow-pending-review", action="store_true")
+    parser.add_argument("--allow-unfrozen-dataset", action="store_true",
+                        help="Development only: evaluate a dataset without frozen metadata.")
     parser.add_argument(
         "--infer-capabilities", action="store_true",
         help=("Use the capability LLM instead of each task's frozen active_components. "
@@ -322,6 +405,7 @@ def main() -> int:
     load_environment(workspace / ".env")
     resolve = lambda path: path if path.is_absolute() else workspace / path
     dataset = resolve(args.dataset)
+    validate_frozen_dataset(dataset, allow_unfrozen=args.allow_unfrozen_dataset)
     output = resolve(args.output)
     selection_prompt = resolve(args.selection_prompt)
     capability_prompt = resolve(args.capability_prompt)
@@ -362,7 +446,16 @@ def main() -> int:
         realization, schema, evidence_by_id=evidence_by_parameter_id(evidence),
         semantic_enrichments=enrichments,
     )
-    if dataset.name == "parameter_reasoning_tasks_v1.jsonl":
+    dataset_cases = [
+        json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    is_parameter_task_dataset = bool(dataset_cases) and all(
+        isinstance((case.get("expected") or {}).get("active_components"), list)
+        for case in dataset_cases
+    )
+    tasks = None
+    if is_parameter_task_dataset:
         tasks = load_parameter_reasoning_tasks(dataset)
         pending = [task.id for task in tasks if task.review_status != "human_verified"]
         if pending and not args.allow_pending_review:
@@ -390,6 +483,12 @@ def main() -> int:
             registry=registry,
         )
     variants = args.context_variant or list(VARIANTS)
+    input_hashes = {str(path.relative_to(workspace)): _digest(path) for path in (
+        dataset, selection_prompt, value_prompt, system_path, schema_path,
+        manifest_path, evidence_path,
+        *([capability_prompt] if args.infer_capabilities else []),
+        *([resolve(args.semantic_enrichment)] if args.semantic_enrichment is not None else []),
+    )}
     summaries = {}
     for variant in variants:
         reasoner = ParameterReasoner(
@@ -406,36 +505,75 @@ def main() -> int:
                 system_model=system_model, manifest=manifest,
             )
         else:
-            if dataset.name != "parameter_reasoning_tasks_v1.jsonl":
-                parser.error("ground-truth component scope requires parameter_reasoning_tasks_v1.jsonl")
-            conditioned_reasoner = _GroundTruthConditionedReasoner(
-                reasoner,
-                active_components_by_mission={
-                    task.mission: task.expected.active_components for task in tasks
-                },
-                registry=registry, schema=schema,
-                evidence_by_id=evidence_by_parameter_id(evidence), enrichments=enrichments,
-                system_model=system_model, manifest=manifest,
+            if is_parameter_task_dataset:
+                assert tasks is not None
+                conditioned_reasoner = _GroundTruthConditionedReasoner(
+                    reasoner,
+                    active_components_by_mission={
+                        task.mission: task.expected.active_components for task in tasks
+                    },
+                    registry=registry, schema=schema,
+                    evidence_by_id=evidence_by_parameter_id(evidence), enrichments=enrichments,
+                    system_model=system_model, manifest=manifest,
+                )
+            else:
+                capabilities_by_mission = {}
+                for case in dataset_cases:
+                    interpretation = case.get("expected_capability_interpretation") or {}
+                    if interpretation.get("status") == "valid":
+                        capabilities = CapabilitySelections.model_validate(
+                            interpretation.get("capabilities", {})
+                        )
+                    else:
+                        capabilities = CapabilitySelections.defaults()
+                    capabilities_by_mission[case["mission"]] = capabilities
+                conditioned_reasoner = _DatasetConditionedReasoner(
+                    reasoner, capabilities_by_mission=capabilities_by_mission,
+                    registry=registry, schema=schema,
+                    evidence_by_id=evidence_by_parameter_id(evidence), enrichments=enrichments,
+                    system_model=system_model, manifest=manifest,
+                )
+        variant_output = output / variant
+        checkpoint_path = variant_output / "parameter_predictions.jsonl"
+        checkpoint_metadata_path = variant_output / "checkpoint.json"
+        fingerprint = {
+            "hashes": input_hashes,
+            "model": args.model,
+            "variant": variant,
+            "top_k": args.top_k,
+            "graph_hops": args.graph_hops,
+            "include_no_change": args.include_no_change,
+            "infer_capabilities": args.infer_capabilities,
+        }
+        _prepare_parameter_checkpoint(
+            checkpoint_metadata_path, checkpoint_path, fingerprint,
+        )
+        initial_records = _load_parameter_checkpoint(checkpoint_path)
+        if initial_records:
+            print(
+                f"[{variant}] resuming {len(initial_records)} saved parameter cases",
+                flush=True,
             )
         report = evaluate_parameter_reasoning(
             dataset, conditioned_reasoner, catalogue,
             include_no_change=args.include_no_change,
             progress=_progress_logger(
-                variant, output, selection_backend, value_backend, capability_backend,
+                variant, variant_output, selection_backend, value_backend, capability_backend,
+                checkpoint_path=checkpoint_path, initial_records=initial_records,
             ),
+            initial_records=initial_records,
         )
-        write_parameter_evaluation_report(report, output / variant)
+        write_parameter_evaluation_report(report, variant_output)
+        checkpoint_metadata_path.write_text(json.dumps({
+            "status": "complete", "fingerprint": fingerprint,
+            "completed_cases": report["metrics"]["cases"],
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         summaries[variant] = report["metrics"]
     metadata = {
         "model": args.model, "context_variants": variants, "top_k": args.top_k,
         "graph_hops": args.graph_hops, "include_no_change": args.include_no_change,
         "capability_source": "llm" if args.infer_capabilities else "ground_truth",
-        "hashes": {str(path.relative_to(workspace)): _digest(path) for path in (
-            dataset, selection_prompt, value_prompt, system_path, schema_path,
-            manifest_path, evidence_path,
-            *([capability_prompt] if args.infer_capabilities else []),
-            *([resolve(args.semantic_enrichment)] if args.semantic_enrichment is not None else []),
-        )},
+        "hashes": input_hashes,
         "metrics": summaries,
     }
     output.mkdir(parents=True, exist_ok=True)

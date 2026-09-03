@@ -42,6 +42,14 @@ Examples:
 Mission: Build a map using Cartographer and the default kinematic ICP pipeline.
 Output: {"status":"no_change","selected_parameters":[],"reason":"The mission selects capabilities but requests no runtime parameter changes."}
 
+Mission: Enable explore_lite, launch Cartographer, launch nav2, launch KISS-ICP with a maximum range of 5 metres, and launch laser scan to pointcloud.
+Output: {"status":"valid","selected_parameters":[{"parameter_id":"nodes.kiss_icp.max_range","relevance":"The mission requests a specific maximum-range value for KISS-ICP.","confidence":1.0}]}
+
+The mission above mentions five components. Only one of them - KISS-ICP's range - carries a
+runtime setting. Enabling explore_lite, Cartographer, nav2, and laser scan to pointcloud are
+capability requests only; select nothing for them, even though a parameter for each may appear
+in the bounded selection context.
+
 Return one JSON object with these fields:
 - status: valid, no_change, unsupported, or needs_clarification;
 - interpretation: optional short description;

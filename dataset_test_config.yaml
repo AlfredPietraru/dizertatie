@@ -7,10 +7,13 @@ dataset_path: data/antrobot_test_mission_dataset_v1.jsonl
 metadata_path: data/antrobot_test_mission_dataset_v1.metadata.json
 configuration_schema_path: artifacts/template_configuration/template_configuration_schema.json
 capability_registry_path: configuration_templates/capability_registry.yaml
-candidate_history_path: artifacts/dataset_generation/antrobot_test_missions_v1/candidates.jsonl
-raw_directory: artifacts/dataset_generation/antrobot_test_missions_v1/raw
-semantic_rejection_path: artifacts/dataset_generation/antrobot_test_missions_v1/semantic_rejections.json
-manual_repair_path: artifacts/dataset_generation/antrobot_test_missions_v1/manual_repairs.json
+candidate_history_path: artifacts/dataset_generation/antrobot_test_missions_v2/candidates.jsonl
+raw_directory: artifacts/dataset_generation/antrobot_test_missions_v2/raw
+semantic_rejection_path: artifacts/dataset_generation/antrobot_test_missions_v2/semantic_rejections.json
+manual_repair_path: artifacts/dataset_generation/antrobot_test_missions_v2/manual_repairs.json
+review_queue_path: artifacts/dataset_generation/antrobot_test_missions_v2/review_queue.md
+quality_report_directory: artifacts/dataset_generation/antrobot_test_missions_v2/quality
+require_human_review: true
 first_batch_styles:
   - canonical
   - natural

@@ -19,28 +19,42 @@ Defaulting rules:
   odometry="kinematic_icp".
 - Preserve each default when the operator does not mention that capability.
 - Use null only when the operator explicitly disables or forbids the capability.
-- Replace a default only when the operator explicitly names another supported implementation.
-- KISS-ICP or KISS ICP selects odometry="kiss_icp".
-- Kinematic ICP selects odometry="kinematic_icp".
+- Replace a default only when the operator explicitly requests using an implementation, or
+  requests a configuration change that clearly targets that implementation. A mission that only
+  asks about or discusses an implementation, without requesting it or a change to it, does not
+  select it.
+- Kinematic ICP selects odometry="kinematic_icp"; KISS-ICP or KISS ICP selects odometry="kiss_icp",
+  under the rule above.
 - Do not infer, report, or explain how an implementation was selected.
 - Exploration requires mapping. When mapping is null, exploration must also be null.
+- If the operator simultaneously activates and disables the same capability, do not arbitrarily
+  choose one instruction over the other. Return needs_clarification instead.
 
 This call evaluates capability changes only. Component names, node names, physical properties,
 hardware settings, topics, rates, thresholds, and numeric configuration values are not
 capabilities.
 
-A parameter-only request is always a valid capability interpretation. Do not classify it as
-unsupported or needs_clarification at this stage, even when the parameter or component is not
-described in the capability catalogue. Parameter support is evaluated later.
+Clarification boundary: return needs_clarification only when unresolved information prevents
+determining one or more of the four capability fields themselves (mapping, navigation,
+exploration, odometry). Examples of capability-level ambiguity: an unresolved choice between
+KISS-ICP and kinematic ICP; simultaneous enable and disable instructions for the same capability;
+an unresolved choice between two supported capabilities (for example mapping or navigation) where
+the requested state cannot be determined.
+
+Do not return needs_clarification for ambiguity involving only: parameter identity, parameter
+target, numeric value, unit, rate, threshold, physical dimension, topic, component, node, or a
+qualitative parameter value. A parameter-only request is always a valid capability interpretation,
+even when the parameter or component is not described in the capability catalogue, and even when
+the parameter's target, value, or unit is missing or unresolved: parameter support and parameter
+clarification are evaluated later, not at this stage.
 
 Parameter tuning does not modify the capability state. Process any explicit capability changes,
 then fill every otherwise unmentioned capability with its default. For a parameter-only request,
 return the complete default capability state unchanged.
 
 Use status "unsupported" when the requested capability or implementation is absent from the
-catalogue. Use "needs_clarification" only when ambiguity prevents a safe supported choice.
-A valid result requires the complete capabilities object. Unsupported and needs_clarification
-results must have capabilities=null.
+catalogue. A valid result requires the complete capabilities object. Unsupported and
+needs_clarification results must have capabilities=null.
 
 Examples:
 
@@ -58,6 +72,18 @@ Output: {"status":"valid","capabilities":{"mapping":"cartographer","navigation":
 
 Mission: Set the joint-state publication frequency to 30 hertz.
 Output: {"status":"valid","capabilities":{"mapping":"cartographer","navigation":"nav2","exploration":"explore_lite","odometry":"kinematic_icp"}}
+
+Mission: Set its update rate to five hertz for smoother autonomous operation.
+Output: {"status":"valid","capabilities":{"mapping":"cartographer","navigation":"nav2","exploration":"explore_lite","odometry":"kinematic_icp"}}
+
+Mission: What is the maximum KISS-ICP sensor range?
+Output: {"status":"valid","capabilities":{"mapping":"cartographer","navigation":"nav2","exploration":"explore_lite","odometry":"kinematic_icp"}}
+
+Mission: Use either KISS-ICP or kinematic ICP for odometry, whichever is appropriate.
+Output: {"status":"needs_clarification","capabilities":null,"reason":"The requested odometry implementation is unresolved between KISS-ICP and kinematic ICP.","clarification_question":"Should KISS-ICP or kinematic ICP odometry be used?"}
+
+Mission: Enable Nav2 but keep navigation disabled.
+Output: {"status":"needs_clarification","capabilities":null,"reason":"The mission both enables and disables navigation.","clarification_question":"Should navigation be enabled with Nav2 or remain disabled?"}
 
 Mission: Set the wheel separation to 25 centimetres in every component that uses it.
 Output: {"status":"valid","capabilities":{"mapping":"cartographer","navigation":"nav2","exploration":"explore_lite","odometry":"kinematic_icp"}}

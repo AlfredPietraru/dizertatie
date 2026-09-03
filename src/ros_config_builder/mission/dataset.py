@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -142,6 +143,16 @@ def load_synthetic_seeds(
         raise ValueError("synthetic seed identifiers must be unique")
     for seed in seeds:
         if isinstance(seed, ValidSeed):
+            terminal_strata = set(seed.strata) & {
+                "invalid-value", "missing-value", "ambiguous-reference",
+                "unresolved-alternative", "conflict", "qualitative-choice",
+                "unsupported",
+            }
+            if terminal_strata:
+                raise ValueError(
+                    f"{seed.id}: supported seed contains terminal annotation strata: "
+                    f"{sorted(terminal_strata)}"
+                )
             mapped = build_template_configuration_plan(
                 realize_capabilities(seed.capabilities, registry), {},
             ).user_values
@@ -168,3 +179,25 @@ def summarize_synthetic_seeds(seeds: list[ValidSeed | UnsupportedSeed | Clarific
                      for name, values in outcomes.items()},
         "strata": sorted({stratum for seed in seeds for stratum in seed.strata}),
     }
+
+
+def validate_frozen_dataset(path: str | Path, *, allow_unfrozen: bool = False) -> dict:
+    dataset = Path(path)
+    metadata_path = dataset.with_suffix(".metadata.json")
+    if not metadata_path.is_file():
+        if allow_unfrozen:
+            return {"dataset_status": "unverified", "metadata_file": None}
+        raise ValueError(f"frozen dataset metadata is missing: {metadata_path}")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("dataset_status") != "frozen" and not allow_unfrozen:
+        raise ValueError(
+            f"dataset is not frozen and human-verified: {metadata_path}"
+        )
+    records = sum(1 for line in dataset.read_text(encoding="utf-8").splitlines() if line.strip())
+    if metadata.get("record_count") != records:
+        raise ValueError("dataset record count differs from frozen metadata")
+    expected_hash = metadata.get("dataset_sha256")
+    actual_hash = hashlib.sha256(dataset.read_bytes()).hexdigest()
+    if expected_hash is not None and expected_hash != actual_hash:
+        raise ValueError("dataset contents differ from frozen metadata hash")
+    return metadata
