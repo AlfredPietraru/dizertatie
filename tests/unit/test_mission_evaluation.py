@@ -15,7 +15,8 @@ class MissionEvaluationTests(unittest.TestCase):
 
     def test_records_structured_success_and_failure_stages(self) -> None:
         responses = iter([
-            '{"status":"valid","capabilities":{"navigation":{"enabled":false}}}',
+            '{"status":"valid","capabilities":{"mapping":"cartographer","navigation":null,'
+            '"exploration":"explore_lite","odometry":"kinematic_icp"}}',
             "not JSON",
         ])
         interpreter = MissionInterpreter(
@@ -23,11 +24,22 @@ class MissionEvaluationTests(unittest.TestCase):
         )
         cases = [
             {"id": "one", "mission": "No navigation", "expected": {
-                "capabilities": {"navigation": {"enabled": False}}},
-             "expected_template_configuration": {"launch.launch_nav2": False}},
+                "capabilities": {
+                    "mapping": "cartographer", "navigation": None,
+                    "exploration": "explore_lite", "odometry": "kinematic_icp",
+                }},
+             "expected_template_configuration": {
+                 "launch.launch_cartographer": True, "launch.launch_nav2": False,
+                 "launch.enable_explore_lite": True, "launch.explore_lite": True,
+                 "launch.launch_kinematic_icp": True, "launch.launch_kiss_icp": False,
+                 "launch.launch_laserscan_to_pointcloud": False,
+             }},
             {"id": "two", "mission": "Mapping", "expected": {
-                "capabilities": {"mapping": {"enabled": True}}},
-             "expected_template_configuration": {"launch.launch_cartographer": True}},
+                "capabilities": {
+                    "mapping": "cartographer", "navigation": "nav2",
+                    "exploration": "explore_lite", "odometry": "kinematic_icp",
+                }},
+             "expected_template_configuration": {}},
         ]
         with tempfile.TemporaryDirectory() as temporary:
             dataset = Path(temporary) / "cases.jsonl"
@@ -35,7 +47,7 @@ class MissionEvaluationTests(unittest.TestCase):
             report = evaluate_missions(dataset, interpreter, registry=self.registry)
             paths = write_evaluation_report(report, Path(temporary) / "report")
             self.assertTrue(report["predictions"][0]["end_to_end_semantic_correct"])
-            self.assertEqual(report["predictions"][0]["explicit_choice_recall"]["correct"], 1)
+            self.assertEqual(report["predictions"][0]["explicit_choice_recall"]["correct"], 4)
             self.assertEqual(report["predictions"][1]["failure_stage"], "invalid_json")
             self.assertEqual(report["metrics"]["explicit_choice_recall"]["rate"], 0.5)
             self.assertTrue(all(path.exists() for path in paths.values()))

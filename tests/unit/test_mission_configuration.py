@@ -36,20 +36,19 @@ class MissionInterpretationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CapabilitySelections.model_validate({"nodes": {"rdrive_node": {"wheel_radius": 0.9}}})
         with self.assertRaises(ValidationError):
-            CapabilitySelections.model_validate({"mapping": {
-                "enabled": True, "selection_basis": "explicit",
-            }})
+            CapabilitySelections.model_validate({"mapping": "orb_slam"})
         with self.assertRaises(ValidationError):
             MissionInterpretation.model_validate({
                 "status": "valid",
-                "capabilities": {"mapping": {"enabled": False}, "exploration": {"enabled": True}},
+                "capabilities": {"mapping": None, "exploration": "explore_lite"},
             })
 
     def test_kiss_icp_has_deterministic_implications(self) -> None:
-        mission = CapabilitySelections.model_validate({"odometry": {
-            "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
-        }})
-        self.assertEqual(self.plan_for(mission).user_values, {
+        mission = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
+        self.assertEqual({key: self.plan_for(mission).user_values[key] for key in (
+            "launch.launch_kinematic_icp", "launch.launch_kiss_icp",
+            "launch.launch_laserscan_to_pointcloud",
+        )}, {
             "launch.launch_kinematic_icp": False,
             "launch.launch_kiss_icp": True,
             "launch.launch_laserscan_to_pointcloud": True,
@@ -57,12 +56,12 @@ class MissionInterpretationTests(unittest.TestCase):
 
     def test_interpreter_uses_strict_json_contract(self) -> None:
         backend = lambda *_: ('{"status":"valid","capabilities":'
-                              '{"navigation":{"enabled":false},"odometry":{"enabled":true,'
-                              '"implementation":"kiss_icp","selection_basis":"explicit"}}}')
+                              '{"mapping":"cartographer","navigation":null,'
+                              '"exploration":"explore_lite","odometry":"kiss_icp"}}')
         result = MissionInterpreter(backend, system_prompt="test", registry=self.registry).interpret(
             "Map without navigation using KISS-ICP")
-        self.assertFalse(result.capabilities.navigation.enabled)
-        self.assertEqual(result.capabilities.odometry.implementation, "kiss_icp")
+        self.assertIsNone(result.capabilities.navigation)
+        self.assertEqual(result.capabilities.odometry, "kiss_icp")
 
     def test_interpreter_rejects_prose_and_invented_keys(self) -> None:
         with self.assertRaises(ValueError):
@@ -83,9 +82,12 @@ class MissionInterpretationTests(unittest.TestCase):
 
     def test_interpretation_status_invariants_are_terminal(self) -> None:
         valid = MissionInterpretation.model_validate({
-            "status": "valid", "capabilities": {"navigation": {"enabled": True}},
+            "status": "valid", "capabilities": {
+                "mapping": "cartographer", "navigation": "nav2",
+                "exploration": "explore_lite", "odometry": "kinematic_icp",
+            },
         })
-        self.assertTrue(valid.capabilities.navigation.enabled)
+        self.assertEqual(valid.capabilities.navigation, "nav2")
         MissionInterpretation.model_validate({"status": "unsupported", "reason": "not available"})
         MissionInterpretation.model_validate({
             "status": "needs_clarification", "reason": "missing value",
@@ -100,43 +102,37 @@ class MissionInterpretationTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 MissionInterpretation.model_validate(payload)
 
-    def test_sparse_capability_contract_rejects_inconsistent_states(self) -> None:
+    def test_minimal_capability_contract_rejects_invalid_implementations(self) -> None:
         invalid = (
-            {"capabilities": {"mapping": {"enabled": False, "implementation": "cartographer",
-                                            "selection_basis": "explicit"}}},
-            {"capabilities": {"mapping": {"enabled": True, "selection_basis": "explicit"}}},
-            {"capabilities": {"mapping": {"enabled": True, "implementation": "orb_slam",
-                                            "selection_basis": "explicit"}}},
+            {"capabilities": {"mapping": "orb_slam"}},
+            {"capabilities": {"navigation": False}},
+            {"capabilities": {"odometry": "unknown_icp"}},
         )
         for payload in invalid:
             with self.assertRaises(ValidationError):
                 CapabilitySelections.model_validate(payload["capabilities"])
 
-        selected_without_provenance = CapabilitySelections.model_validate({
-            "odometry": {"enabled": True, "implementation": "kiss_icp"},
-        })
-        self.assertIsNone(selected_without_provenance.odometry.selection_basis)
+        selected = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
+        self.assertEqual(selected.odometry, "kiss_icp")
 
     def test_capability_registry_defaults_and_explicit_choices_are_deterministic(self) -> None:
-        default_mapping = CapabilitySelections.model_validate({"mapping": {"enabled": True}})
-        self.assertEqual(self.plan_for(default_mapping).user_values, {
-            "launch.launch_cartographer": True,
-        })
+        default_mapping = CapabilitySelections.defaults()
+        self.assertTrue(self.plan_for(default_mapping).user_values["launch.launch_cartographer"])
         explicit = CapabilitySelections.model_validate({
-                "mapping": {"enabled": False},
-                "odometry": {"enabled": True, "implementation": "kiss_icp",
-                             "selection_basis": "requirement_match"},
+                "mapping": None, "navigation": "nav2", "exploration": None,
+                "odometry": "kiss_icp",
         })
-        self.assertEqual(self.plan_for(explicit).user_values, {
-            "launch.launch_cartographer": False,
-            "launch.launch_kinematic_icp": False,
-            "launch.launch_kiss_icp": True,
-            "launch.launch_laserscan_to_pointcloud": True,
-        })
+        values = self.plan_for(explicit).user_values
+        self.assertFalse(values["launch.launch_cartographer"])
+        self.assertTrue(values["launch.launch_kiss_icp"])
 
-    def test_unmentioned_capabilities_do_not_create_renderer_values(self) -> None:
-        mission = CapabilitySelections.model_validate({})
-        self.assertEqual(self.plan_for(mission).user_values, {})
+    def test_unmentioned_capabilities_resolve_to_defaults(self) -> None:
+        mission = CapabilitySelections.defaults()
+        values = self.plan_for(mission).user_values
+        self.assertTrue(values["launch.launch_cartographer"])
+        self.assertTrue(values["launch.launch_nav2"])
+        self.assertTrue(values["launch.enable_explore_lite"])
+        self.assertTrue(values["launch.launch_kinematic_icp"])
 
     def test_capability_prompt_exposes_semantics_but_hides_renderer_realization(self) -> None:
         template = Path("prompts/mission_interpretation.txt").read_text(encoding="utf-8")
@@ -167,18 +163,16 @@ class MissionInterpretationTests(unittest.TestCase):
         raw = json.dumps({
             "status": "valid",
             "capabilities": {
-                    "odometry": {"enabled": True, "implementation": "kiss_icp",
-                                 "selection_basis": "explicit"},
+                "mapping": "cartographer", "navigation": "nav2",
+                "exploration": "explore_lite", "odometry": "kiss_icp",
             },
         })
         interpreter = MissionInterpreter(lambda *_: raw, system_prompt="prompt", registry=self.registry)
         result = interpreter.interpret("Use KISS-ICP")
-        self.assertEqual(result.capabilities.odometry.implementation, "kiss_icp")
+        self.assertEqual(result.capabilities.odometry, "kiss_icp")
 
-    def test_parameter_catalogue_follows_the_realized_active_components(self) -> None:
-        mission = CapabilitySelections.model_validate({"odometry": {
-            "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
-        }})
+    def test_realization_provenance_and_full_parameter_catalogue_are_independent(self) -> None:
+        mission = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
         realization = realize_capabilities(mission, self.registry)
         components = {item.component_id: item for item in realization.components}
         self.assertEqual(components["kiss_icp"].reason, "selected_implementation")
@@ -196,7 +190,9 @@ class MissionInterpretationTests(unittest.TestCase):
         self.assertIn("nodes.joint_state_estimator.publish_frequency", identifiers)
         self.assertNotIn("nodes.kinematic_icp.max_range", identifiers)
         self.assertIn("nodes.rdrive_node.wheel_radius", identifiers)
-        self.assertFalse(any(identifier.startswith("launch.") for identifier in identifiers))
+        self.assertNotIn("launch.launch_kiss_icp", identifiers)
+        self.assertNotIn("launch.launch_kinematic_icp", identifiers)
+        self.assertIn("nodes.kiss_icp.publish_odom_tf", identifiers)
 
         parameters = {item.parameter_id: item for item in visible.parameters}
         wheel_radius_relationships = parameters[
@@ -207,10 +203,8 @@ class MissionInterpretationTests(unittest.TestCase):
             "target": "nodes.joint_state_estimator.wheel_radius",
         }, wheel_radius_relationships)
 
-    def test_parameter_changes_are_validated_against_the_active_catalogue(self) -> None:
-        mission = CapabilitySelections.model_validate({"odometry": {
-            "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
-        }})
+    def test_parameter_changes_are_validated_against_full_catalogue(self) -> None:
+        mission = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
         realization = realize_capabilities(mission, self.registry)
         schema = json.loads(Path(
             "artifacts/template_configuration/template_configuration_schema.json"
@@ -227,13 +221,11 @@ class MissionInterpretationTests(unittest.TestCase):
         inactive_component_change = [ParameterChange.model_validate({
             "parameter_id": "nodes.kinematic_icp.max_range", "value": 20.0,
         })]
-        with self.assertRaisesRegex(ValueError, "not available"):
+        with self.assertRaisesRegex(ValueError, "configuration value is not available"):
             validate_parameter_changes(inactive_component_change, catalogue)
 
     def test_required_ros_connections_are_projected_with_partial_external_status(self) -> None:
-        capabilities = CapabilitySelections.model_validate({"odometry": {
-            "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
-        }})
+        capabilities = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
         orchestration = self.orchestration_for(realize_capabilities(capabilities, self.registry))
         requirements = {item.connection_id: item for item in orchestration.required_connections}
         self.assertEqual(orchestration.status, "partially_verified")
@@ -254,9 +246,7 @@ class MissionInterpretationTests(unittest.TestCase):
         self.assertTrue(any(item.status == "unknown" for item in orchestration.qos_checks))
 
     def test_missing_local_required_endpoint_invalidates_orchestration(self) -> None:
-        capabilities = CapabilitySelections.model_validate({"odometry": {
-            "enabled": True, "implementation": "kiss_icp", "selection_basis": "explicit",
-        }})
+        capabilities = CapabilitySelections.defaults().model_copy(update={"odometry": "kiss_icp"})
         model = copy.deepcopy(self.system_model)
         for instance in model["deployment_instances"]:
             if instance["effective_node_name"] in {"rplidar_node", "kiss_icp"}:

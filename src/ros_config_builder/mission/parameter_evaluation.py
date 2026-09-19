@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -34,6 +34,12 @@ def _expected_changes(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 "absolute_tolerance": item.get("absolute_tolerance", 1e-9),
             }
             for item in parameter_reasoning.get("changes", [])
+        }
+    flat_parameters = case.get("expected_parameters")
+    if isinstance(flat_parameters, dict):
+        return {
+            key: {"value": value, "absolute_tolerance": 1e-9}
+            for key, value in flat_parameters.items()
         }
     return {
         key: {"value": value, "absolute_tolerance": 1e-9}
@@ -100,39 +106,27 @@ def evaluate_parameter_reasoning(
     system_context: dict[str, Any] | None = None,
     wiring_bindings: dict[str, dict[str, Any]] | None = None,
     include_no_change: bool = False,
-    checkpoint_path: str | Path | None = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+    initial_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Score each AI boundary independently; execution errors are always failures."""
     all_cases = [json.loads(line) for line in Path(dataset_path).read_text(encoding="utf-8").splitlines()
                  if line.strip()]
     cases = [case for case in all_cases if _is_parameter_case(case, include_no_change=include_no_change)]
-    checkpoint = Path(checkpoint_path) if checkpoint_path is not None else None
-    records: list[dict[str, Any]] = []
-    if checkpoint is not None and checkpoint.is_file():
-        lines = checkpoint.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines):
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                if index != len(lines) - 1:
-                    raise ValueError(
-                        f"corrupt parameter-evaluation checkpoint record {index + 1}: "
-                        f"{checkpoint}"
-                    )
-                checkpoint.write_text(
-                    "".join(json.dumps(item, sort_keys=True) + "\n" for item in records),
-                    encoding="utf-8",
-                )
+    records: list[dict[str, Any]] = list(initial_records or [])
     case_by_id = {case["id"]: case for case in cases}
-    completed = {item["id"] for item in records}
-    if len(completed) != len(records):
-        raise ValueError(f"parameter-evaluation checkpoint contains duplicate IDs: {checkpoint}")
-    if unknown := completed - set(case_by_id):
-        raise ValueError(f"checkpoint contains IDs absent from the dataset: {sorted(unknown)}")
-    for item in records:
-        if item["mission"] != case_by_id[item["id"]]["mission"]:
-            raise ValueError(f"checkpoint mission changed for {item['id']}")
-    for case in cases:
+    completed_ids = [str(record.get("id")) for record in records]
+    if len(completed_ids) != len(set(completed_ids)):
+        raise ValueError("parameter checkpoint contains duplicate case IDs")
+    unknown_ids = sorted(set(completed_ids) - set(case_by_id))
+    if unknown_ids:
+        raise ValueError(f"parameter checkpoint contains unknown case IDs: {unknown_ids}")
+    for record in records:
+        case = case_by_id[record["id"]]
+        if record.get("mission") != case["mission"]:
+            raise ValueError(f"parameter checkpoint mission changed for {record['id']}")
+    completed = set(completed_ids)
+    for case_index, case in enumerate(cases, 1):
         if case["id"] in completed:
             continue
         expected = _expected_changes(case)
@@ -147,6 +141,12 @@ def evaluate_parameter_reasoning(
             "selection": _selection_scores(expected_ids, set()), "value_comparison": None,
             "outcome_correct": False, "end_to_end_correct": False,
         }
+        if progress is not None:
+            progress({
+                "event": "case_started", "index": case_index,
+                "total": len(cases), "id": case["id"], "mission": case["mission"],
+                "expected_result": {"status": expected_status, "changes": expected},
+            })
         try:
             result = reasoner.reason(
                 case["mission"], catalogue, system_context=system_context,
@@ -155,17 +155,13 @@ def evaluate_parameter_reasoning(
         except Exception as error:
             record["error"] = f"{type(error).__name__}: {error}"
             records.append(record)
-            if checkpoint is not None:
-                checkpoint.parent.mkdir(parents=True, exist_ok=True)
-                with checkpoint.open("a", encoding="utf-8") as stream:
-                    stream.write(json.dumps(record, sort_keys=True) + "\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-            print(
-                f"[{reasoner.context_variant}] {len(records)}/{len(cases)} "
-                f"{case['id']}: error",
-                flush=True,
-            )
+            if progress is not None:
+                progress({
+                    "event": "case_finished", "index": case_index,
+                    "total": len(cases), "id": case["id"], "status": "error",
+                    "error": record["error"], "end_to_end_correct": False,
+                    "record": record,
+                })
             continue
         record["predicted_status"] = result.status
         record["selection_context"] = result.selection_context.model_dump(mode="json")
@@ -216,20 +212,13 @@ def evaluate_parameter_reasoning(
             and record["value_comparison"]["exact"]
         )
         records.append(record)
-        if checkpoint is not None:
-            checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            with checkpoint.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(record, sort_keys=True) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-        print(
-            f"[{reasoner.context_variant}] {len(records)}/{len(cases)} {case['id']}: "
-            f"{'pass' if record['end_to_end_correct'] else 'fail'}",
-            flush=True,
-        )
-
-    order = {case["id"]: index for index, case in enumerate(cases)}
-    records.sort(key=lambda item: order[item["id"]])
+        if progress is not None:
+            progress({
+                "event": "case_finished", "index": case_index,
+                "total": len(cases), "id": case["id"], "status": result.status,
+                "error": None, "end_to_end_correct": record["end_to_end_correct"],
+                "record": record,
+            })
 
     expected_parameter_records = [item for item in records if item["expected_changes"]]
     retrieval_records = [item for item in expected_parameter_records if item["retrieval"] is not None]

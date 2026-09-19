@@ -23,7 +23,7 @@ FAILURE_CATEGORIES = (
 def _sparse(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: cleaned for key, item in value.items()
-                if (cleaned := _sparse(item)) not in (None, {}, [])}
+                if (cleaned := _sparse(item)) not in ({}, [])}
     if isinstance(value, list):
         return [_sparse(item) for item in value]
     return value
@@ -130,8 +130,9 @@ def evaluate_missions(
         expected_outcome = case.get("outcome", "supported")
         if expected_outcome not in {"supported", "unsupported", "ambiguous"}:
             raise ValueError(f"{case['id']} has invalid outcome {expected_outcome!r}")
-        expected_model = CapabilitySelections.model_validate(case.get("expected", {}).get("capabilities", {}))
-        expected = _sparse(expected_model.model_dump(mode="json")) if expected_outcome == "supported" else {}
+        expected = _sparse(CapabilitySelections.model_validate(
+            case.get("expected", {}).get("capabilities", {})
+        ).model_dump(mode="json")) if expected_outcome == "supported" else {}
         expected_fields = _leaves(expected)
         full_expected_configuration = case.get("expected_template_configuration", {})
         capability_configuration = {

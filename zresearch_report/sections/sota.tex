@@ -16,7 +16,7 @@ resources such as ROS components and initializes the RobotKube Operator which is
 changes to ROS components and depending on the situation, it can deploy containers, set up networking or restarts components
 which previously failed.
 
-ROScribe \cite{roscribe2025} uses natural language processing to describe system functionalities and generates the initial ROS graph, 
+ROScribe \cite{roscribe} uses natural language processing to describe system functionalities and generates the initial ROS graph, 
 source code, and launch files. ROScribe builds an entire ROS workspace using four agents that are invoked in a sequential order.
 First, the SpecAgent constructs the ROS graph of the project by interpreting user requirements and creates a corresponding
 development plan. Second, the GenAgent generates the workspace by either retrieving code from public repositories or 
@@ -43,7 +43,7 @@ automate container creation for cloud deployment, significantly reducing manual 
 flexible networking and pre-deployed nodes, abstracting many aspects of deployment across local devices and cloud environments,
 while still requiring user-defined configuration choices.
 
-OSRF Nexus \cite{osrfnexus2025} is a framework designed to support dependency management and version control within 
+OSRF Nexus \cite{osrfnexus} is a framework designed to support dependency management and version control within 
 ROS-based software ecosystems. It provides mechanisms for organizing, distributing, and resolving
 ROS packages and their dependencies across different systems, helping ensure consistency and 
 reproducibility of software environments. Nexus operates at the package and dependency level, allowing
@@ -108,9 +108,9 @@ Operates solely at the package and dependency level; does not address configurat
 Despite the fact that the outputs of large language models (LLMs) remain nondeterministic, they can still
 be integrated into robotic systems in a controlled manner. One example of such integration is ROScribe, 
 which leverages LLM-based workflows to automate the generation of ROS workspaces. Similar to the approach 
-described in the AutoGen \cite{autogen2023} framework, ROScribe employs a multi-agent pipeline in which agents exchange intermediate
+described in the AutoGen \cite{wu2023autogen} framework, ROScribe employs a multi-agent pipeline in which agents exchange intermediate
 artifacts—such as generated code—and invoke external tools to enrich, validate, or evaluate the produced content.
-Another relevant work for the current context \cite{doasicannot2022} demonstrates how high-level task intent
+Another relevant work for the current context \cite{ahn2022saycan} demonstrates how high-level task intent
 can be extracted from a single natural language instruction and decomposed into multiple subtasks. In this approach, the 
 language model proposes candidate actions expressed in natural language, while the robot provides perception and actuation 
 capabilities, effectively serving as the interface to the physical environment. The robot is equipped with a set of predefined 

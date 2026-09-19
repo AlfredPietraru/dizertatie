@@ -19,7 +19,7 @@ if __package__ in {None, ""}:
 from ros_config_builder.mission import (
     AntRobotCapabilityRegistry, MissionInterpretation, MissionInterpreter, OllamaBackend,
     build_interpretation_prompt, build_template_configuration_plan, derive_parameter_catalogue,
-    build_parameter_system_context,
+    build_parameter_selection_system_context,
     ParameterReasoner, ParameterSelectionInterpretation, ParameterValueInterpretation,
     build_parameter_evidence, enrichment_by_parameter_id, evidence_by_parameter_id,
     load_capability_registry, load_parameter_evidence_artifact,
@@ -68,9 +68,9 @@ class ApplicationConfiguration(BaseModel):
     environment_file: Path = Path(".env")
 
     context_variant: Literal[
-        "names_values", "semantic", "source", "system", "graph", "metadata_graph",
+        "names_values", "semantic", "source", "system", "graph", "llm_semantic",
     ] = "graph"
-    retrieval_top_k: int = Field(default=12, ge=1)
+    retrieval_top_k: int = Field(default=10, ge=1)
     graph_hops: int = Field(default=1, ge=0)
 
     root_launch_files: list[Path] = Field(default_factory=lambda: [
@@ -293,7 +293,9 @@ class MissionApplication:
         result["parameter_catalogue"] = catalogue.model_dump(mode="json")
         reasoning = self.parameter_reasoner.reason(
             mission, catalogue,
-            system_context=build_parameter_system_context(realization, orchestration),
+            system_context=build_parameter_selection_system_context(
+                orchestration.model_dump(mode="json"),
+            ),
             wiring_bindings=self.manifest.get("wiring_bindings", {}),
         )
         result["parameter_retrieval"] = reasoning.retrieval.model_dump(mode="json")

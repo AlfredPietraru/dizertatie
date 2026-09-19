@@ -65,9 +65,8 @@ class MissionApplicationTests(unittest.TestCase):
     def test_valid_mission_maps_validates_and_reaches_renderer(self) -> None:
         backend = lambda *_: (
             '{"status":"valid","capabilities":'
-            '{"mapping":{"enabled":true},"navigation":{"enabled":false},'
-            '"odometry":{"enabled":true,"implementation":"kiss_icp",'
-            '"selection_basis":"explicit"}}}'
+            '{"mapping":"cartographer","navigation":null,'
+            '"exploration":"explore_lite","odometry":"kiss_icp"}}'
         )
         calls = []
 
@@ -97,6 +96,8 @@ class MissionApplicationTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "valid")
         self.assertEqual(result["plan"]["user_values"], {
+            "launch.enable_explore_lite": True,
+            "launch.explore_lite": True,
             "launch.launch_cartographer": True,
             "launch.launch_nav2": False,
             "launch.launch_kinematic_icp": False,
@@ -133,8 +134,8 @@ class MissionApplicationTests(unittest.TestCase):
     def test_terminal_parameter_outcome_never_reaches_renderer(self) -> None:
         capability_backend = lambda *_: (
             '{"status":"valid","capabilities":'
-            '{"odometry":{"enabled":true,"implementation":"kiss_icp",'
-            '"selection_basis":"explicit"}}}'
+            '{"mapping":"cartographer","navigation":"nav2",'
+            '"exploration":"explore_lite","odometry":"kiss_icp"}}'
         )
 
         def renderer(**_kwargs):
@@ -163,8 +164,8 @@ class MissionApplicationTests(unittest.TestCase):
         registry = load_capability_registry("configuration_templates/capability_registry.yaml")
         backend = lambda *_: (
             '{"status":"valid","capabilities":'
-            '{"mapping":{"enabled":true},"odometry":{"enabled":true,'
-            '"implementation":"kiss_icp","selection_basis":"explicit"}}}'
+            '{"mapping":"cartographer","navigation":"nav2",'
+            '"exploration":"explore_lite","odometry":"kiss_icp"}}'
         )
         calls = []
 
@@ -207,7 +208,10 @@ class MissionApplicationTests(unittest.TestCase):
                 "Map using KISS-ICP and limit its range to 20 metres", output_directory=directory,
             )
         self.assertEqual(result["plan"]["user_values"], {
+            "launch.enable_explore_lite": True,
+            "launch.explore_lite": True,
             "launch.launch_cartographer": True,
+            "launch.launch_nav2": True,
             "launch.launch_kinematic_icp": False,
             "launch.launch_kiss_icp": True,
             "launch.launch_laserscan_to_pointcloud": True,
@@ -258,7 +262,9 @@ class MissionApplicationTests(unittest.TestCase):
         application = MissionApplication(
             workspace=self.workspace,
             interpreter=MissionInterpreter(
-                lambda *_: '{"status":"valid","capabilities":{}}',
+                lambda *_: ('{"status":"valid","capabilities":{"mapping":"cartographer",'
+                           '"navigation":"nav2","exploration":"explore_lite",'
+                           '"odometry":"kinematic_icp"}}'),
                 system_prompt="test", registry=self.registry,
             ),
             parameter_reasoner=reasoner, capability_registry=self.registry, renderer=renderer,
@@ -270,6 +276,13 @@ class MissionApplicationTests(unittest.TestCase):
         self.assertEqual(result["parameter_selection"]["status"], "valid")
         self.assertEqual(result["parameter_value_interpretation"]["status"], "valid")
         self.assertEqual(result["plan"]["user_values"], {
+            "launch.enable_explore_lite": True,
+            "launch.explore_lite": True,
+            "launch.launch_cartographer": True,
+            "launch.launch_nav2": True,
+            "launch.launch_kinematic_icp": True,
+            "launch.launch_kiss_icp": False,
+            "launch.launch_laserscan_to_pointcloud": False,
             "nodes.joint_state_estimator.publish_frequency": 30.0,
         })
         self.assertEqual(len(calls), 1)

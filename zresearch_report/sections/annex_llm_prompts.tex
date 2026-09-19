@@ -1,0 +1,185 @@
+\chapter{Examples of LLM Prompts and Responses}
+\label{annex:llm-prompts}
+
+This annex illustrates the three language-model calls using one successful mission from the final minimal-contract evaluation:
+
+\begin{lstlisting}[style=annexcode,caption={User mission supplied to all three calls.}]
+Set the joint-state publication frequency to 30 hertz.
+\end{lstlisting}
+
+The responses are raw JSON from \texttt{qwen2.5-coder:7b} for case \texttt{seed-108-p01}. Machine-generated catalogue and schema sections are abbreviated.
+
+\section{Capability Interpretation Prompt}
+
+The first call determines the complete capability state. Parameter-only language must not change capabilities, so unmentioned capabilities retain their registry-defined defaults.
+
+\begin{lstlisting}[style=annexcode,caption={Representative capability-interpretation system message.},label={lst:capability-system-prompt}]
+You translate an operator mission into one MissionInterpretation JSON object.
+Return JSON only. Never emit prose, ROS YAML, launch code, or fields absent from the schema.
+
+Capability output is complete and minimal. Always return exactly:
+- mapping: "cartographer" or null
+- navigation: "nav2" or null
+- exploration: "explore_lite" or null
+- odometry: "kinematic_icp", "kiss_icp", or null
+
+An implementation string means active. null means explicitly disabled.
+
+Defaulting rules:
+- Begin with the registry defaults.
+- Preserve a default when its capability is not mentioned.
+- Use null only when the operator explicitly disables a capability.
+- Replace a default only when another supported implementation is named.
+- Exploration requires mapping.
+
+This call evaluates capability changes only. Parameters, topics, rates,
+thresholds, and numeric settings are not capabilities. A parameter-only
+request is a valid capability interpretation and preserves all defaults.
+
+Use status "unsupported" only for an unsupported capability or
+implementation. Use "needs_clarification" only when ambiguity prevents
+a safe capability choice.
+
+AntRobot capability catalogue:
+  [generated registry projection omitted for readability]
+
+Required JSON schema:
+  [MissionInterpretation schema omitted for readability]
+\end{lstlisting}
+
+\begin{lstlisting}[style=annexcode,language={},caption={Capability interpretation returned by the model.},label={lst:capability-response}]
+{
+  "status": "valid",
+  "capabilities": {
+    "mapping": "cartographer",
+    "navigation": "nav2",
+    "exploration": "explore_lite",
+    "odometry": "kinematic_icp"
+  }
+}
+\end{lstlisting}
+
+\section{Parameter Selection Prompt}
+
+The second call selects identifiers from parameters in the approved component scope; it does not calculate values.
+
+\begin{lstlisting}[style=annexcode,caption={Representative parameter-selection system message.},label={lst:selection-system-prompt}]
+You select which ROS configuration values are relevant to the requested change.
+Return exactly one ParameterSelectionInterpretation JSON object and no prose.
+
+This stage answers only what should change. Never calculate new values.
+Use only parameter_id values in the bounded selection context. Select every
+occurrence required for a cross-component property. Do not select a related
+parameter merely because it is nearby in the graph.
+
+Use status:
+- valid: at least one relevant parameter is identified
+- no_change: no parameter change was requested
+- unsupported: no supplied candidate represents the requested concept
+- needs_clarification: a safe selection requires more information
+
+Capability selection does not imply parameter tuning. "Build a map" does
+not request changing launch.map. Never invent changes needed to make a
+capability work. Never select parameters belonging to inactive components.
+
+Stable system context:
+{
+  "active_components": [
+    "cartographer_node", "explore", "joint_state_estimator",
+    "kinematic_icp", "nav2", "rdrive_node", "rplidar_node"
+  ],
+  "inactive_components": ["kiss_icp", "laserscan_to_pointcloud"]
+}
+
+Bounded selection context:
+{
+  "included_parameter_ids": [
+    "nodes.explore.planner_frequency",
+    "nodes.explore.publish_rate",
+    "nodes.joint_state_estimator.publish_frequency",
+    "nodes.joint_state_estimator.wheel_radius",
+    "nodes.rdrive_node.odom_frequency"
+  ],
+  "records": [
+    {
+      "parameter_id": "nodes.joint_state_estimator.publish_frequency",
+      "current_value": 20.0,
+      "value_type": "number",
+      "semantic_metadata": {
+        "description": "Controls the joint-state publication frequency.",
+        "unit": "Hz"
+      }
+    }
+  ]
+  [remaining bounded candidate records omitted for readability]
+}
+\end{lstlisting}
+
+\begin{lstlisting}[style=annexcode,language={},caption={Parameter selection returned by the model.},label={lst:selection-response}]
+{
+  "status": "valid",
+  "selected_parameters": [
+    {
+      "parameter_id": "nodes.joint_state_estimator.publish_frequency",
+      "relevance": "Controls how often joint states are published.",
+      "confidence": 1.0
+    }
+  ],
+  "reason": "The request specifies a change to the joint-state publication frequency."
+}
+\end{lstlisting}
+
+\section{Parameter-Value Reasoning Prompt}
+
+The final call derives values only for the validated selection.
+
+\begin{lstlisting}[style=annexcode,caption={Representative parameter-value system message.},label={lst:value-system-prompt}]
+You calculate proposed values for parameters selected in the previous stage.
+Return exactly one ParameterValueInterpretation JSON object and no prose.
+
+This stage answers only how the selected parameters should change. Never
+introduce a parameter absent from selected_records. Copy old_value exactly
+from current_value. Perform unit conversion when sufficient information is
+present. Keep coupled occurrences consistent. Give a short, externally
+verifiable reason and quote only the shortest relevant user phrase as
+request_evidence. Use needs_clarification instead of guessing.
+
+Selected parameter context:
+{
+  "selection": {
+    "status": "valid",
+    "selected_parameters": [
+      {
+        "parameter_id": "nodes.joint_state_estimator.publish_frequency",
+        "relevance": "Controls how often joint states are published.",
+        "confidence": 1.0
+      }
+    ]
+  },
+  "selected_records": [
+    {
+      "parameter_id": "nodes.joint_state_estimator.publish_frequency",
+      "current_value": 20.0,
+      "value_type": "number",
+      "unit": "Hz"
+    }
+  ],
+  "relevant_relationships": []
+}
+
+\end{lstlisting}
+
+\begin{lstlisting}[style=annexcode,language={},caption={Parameter-value interpretation returned by the model.},label={lst:value-response}]
+{
+  "status": "valid",
+  "changes": [
+    {
+      "parameter_id": "nodes.joint_state_estimator.publish_frequency",
+      "old_value": 20.0,
+      "new_value": 30.0,
+      "reason": "The request specifies a change to the joint-state publication frequency.",
+      "request_evidence": "set the joint-state publication frequency to 30 hertz"
+    }
+  ]
+}
+\end{lstlisting}

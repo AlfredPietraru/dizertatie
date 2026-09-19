@@ -19,7 +19,6 @@ from .schema import (
 
 
 SELECTION_CONTEXT_PLACEHOLDER = "{{SELECTION_CONTEXT}}"
-SELECTION_SCHEMA_PLACEHOLDER = "{{PARAMETER_SELECTION_JSON_SCHEMA}}"
 SYSTEM_CONTEXT_PLACEHOLDER = "{{SYSTEM_CONTEXT}}"
 VALUE_CONTEXT_PLACEHOLDER = "{{VALUE_CONTEXT}}"
 VALUE_SCHEMA_PLACEHOLDER = "{{PARAMETER_VALUE_JSON_SCHEMA}}"
@@ -32,7 +31,6 @@ class ReasoningBackend(Protocol):
 class SelectedParameter(MissionModel):
     parameter_id: str
     relevance: str = Field(min_length=3)
-    grounding_evidence_ids: list[str] = Field(default_factory=list)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
@@ -48,8 +46,6 @@ class ParameterSelectionInterpretation(MissionModel):
         if self.status == "valid":
             if not self.selected_parameters:
                 raise ValueError("valid parameter selection requires at least one selected parameter")
-            if self.reason is not None or self.clarification_question is not None:
-                raise ValueError("valid parameter selection cannot contain terminal fields")
         elif self.status == "no_change":
             if self.selected_parameters or not self.reason or self.clarification_question is not None:
                 raise ValueError("no_change requires a reason and no selected parameters")
@@ -70,7 +66,6 @@ class ProposedParameterChange(MissionModel):
     new_value: RendererValue
     reason: str = Field(min_length=3)
     request_evidence: str | None = None
-    grounding_evidence_ids: list[str] = Field(default_factory=list)
 
 
 class ParameterValueInterpretation(MissionModel):
@@ -114,7 +109,10 @@ def _replace_json_placeholders(template: str, replacements: dict[str, Any]) -> s
     for placeholder, value in replacements.items():
         if prompt.count(placeholder) != 1:
             raise ValueError(f"prompt must contain exactly one {placeholder} placeholder")
-        prompt = prompt.replace(placeholder, json.dumps(value, indent=2, sort_keys=True))
+        prompt = prompt.replace(
+            placeholder,
+            json.dumps(value, sort_keys=True, separators=(",", ":")),
+        )
     return prompt.rstrip()
 
 
@@ -127,30 +125,21 @@ def build_parameter_selection_prompt(
     return _replace_json_placeholders(template, {
         SELECTION_CONTEXT_PLACEHOLDER: context.model_dump(mode="json"),
         SYSTEM_CONTEXT_PLACEHOLDER: system_context or {},
-        SELECTION_SCHEMA_PLACEHOLDER: ParameterSelectionInterpretation.model_json_schema(),
     })
 
 
-def build_parameter_system_context(
-    realization: SystemRealization,
-    orchestration: ROSOrchestrationPlan,
+def build_parameter_selection_system_context(
+    ros_orchestration: dict[str, Any],
 ) -> dict[str, Any]:
-    """Summarize the decided capability state without flooding the selection prompt."""
+    """Keep only deployment eligibility facts needed during parameter selection."""
+    active_components = sorted({
+        item["component_id"]
+        for item in ros_orchestration.get("active_components", [])
+        if isinstance(item, dict) and isinstance(item.get("component_id"), str)
+    })
     return {
-        "capabilities": [{
-            "capability": item.capability,
-            "implementation": item.implementation,
-            "enabled": item.enabled,
-            "user_mentioned": item.user_mentioned,
-        } for item in realization.capabilities],
-        "active_components": sorted(realization.active_component_ids),
-        "renderer_values": realization.renderer_values,
-        "orchestration_status": orchestration.status,
-        "wiring_bindings": [{
-            "semantic_role": item.semantic_role,
-            "effective_value": item.effective_value,
-            "active_targets": item.active_targets,
-        } for item in orchestration.wiring_bindings],
+        "active_components": active_components,
+        "inactive_components": sorted(ros_orchestration.get("inactive_components", [])),
     }
 
 
@@ -174,32 +163,37 @@ def build_parameter_value_prompt(
     })
 
 
+def _validation_repair_user_prompt(
+    mission: str,
+    previous_response: str,
+    error: ValueError,
+    *,
+    stage: Literal["parameter_selection", "parameter_value"],
+) -> str:
+    """Ask once for a corrected result while preserving the original system context."""
+    repair = {
+        "instruction": (
+            "Correct the previous response so it passes deterministic validation. "
+            "Return only the corrected JSON object required by the system prompt."
+        ),
+        "stage": stage,
+        "original_mission": mission,
+        "validation_error": str(error),
+        "previous_response": previous_response,
+    }
+    return "Deterministic validation rejected the previous response:\n" + json.dumps(
+        repair, sort_keys=True, separators=(",", ":"),
+    )
+
+
 def validate_parameter_selection(
     selection: ParameterSelectionInterpretation,
     context: SelectionContext,
 ) -> None:
     supplied = set(context.included_parameter_ids)
-    evidence_ids = {
-        item.get("evidence_id")
-        for record in context.records
-        for field in ("declarations", "usages")
-        for item in (record.get("source_evidence", {}).get(field, []))
-        if isinstance(item, dict)
-    } | {
-        item.get("evidence_id")
-        for record in context.records
-        for item in record.get("ros_interfaces", [])
-        if isinstance(item, dict)
-    }
     unknown = sorted({item.parameter_id for item in selection.selected_parameters} - supplied)
     if unknown:
         raise ValueError(f"parameter selection contains IDs absent from its context: {unknown}")
-    invented_evidence = sorted({
-        evidence_id for item in selection.selected_parameters
-        for evidence_id in item.grounding_evidence_ids if evidence_id not in evidence_ids
-    })
-    if invented_evidence:
-        raise ValueError(f"parameter selection cites unknown evidence: {invented_evidence}")
 
 
 def validate_parameter_values(
@@ -241,7 +235,7 @@ class ParameterReasoner:
         selection_prompt_template: str,
         value_prompt_template: str,
         context_variant: ContextVariant = "graph",
-        top_k: int = 12,
+        top_k: int = 10,
         graph_hops: int = 1,
         max_candidates: int = 24,
         character_budget: int = 40000,
@@ -280,8 +274,20 @@ class ParameterReasoner:
             self.selection_prompt_template, context, system_context=system_context,
         )
         selection_raw = self.selection_backend(selection_prompt, mission.strip())
-        selection = ParameterSelectionInterpretation.model_validate(extract_json_object(selection_raw))
-        validate_parameter_selection(selection, context)
+        try:
+            selection = ParameterSelectionInterpretation.model_validate(
+                extract_json_object(selection_raw)
+            )
+            validate_parameter_selection(selection, context)
+        except ValueError as error:
+            repair_prompt = _validation_repair_user_prompt(
+                mission.strip(), selection_raw, error, stage="parameter_selection",
+            )
+            selection_raw = self.selection_backend(selection_prompt, repair_prompt)
+            selection = ParameterSelectionInterpretation.model_validate(
+                extract_json_object(selection_raw)
+            )
+            validate_parameter_selection(selection, context)
         if selection.status != "valid":
             return ParameterReasoningResult(
                 status=selection.status, retrieval=retrieval, selection_context=context,
@@ -291,14 +297,26 @@ class ParameterReasoner:
             self.value_prompt_template, selection, context,
         )
         value_raw = self.value_backend(value_prompt, mission.strip())
-        value_interpretation = ParameterValueInterpretation.model_validate(extract_json_object(value_raw))
+        try:
+            value_interpretation = ParameterValueInterpretation.model_validate(
+                extract_json_object(value_raw)
+            )
+            values = validate_parameter_values(value_interpretation, selection, catalogue)
+        except ValueError as error:
+            repair_prompt = _validation_repair_user_prompt(
+                mission.strip(), value_raw, error, stage="parameter_value",
+            )
+            value_raw = self.value_backend(value_prompt, repair_prompt)
+            value_interpretation = ParameterValueInterpretation.model_validate(
+                extract_json_object(value_raw)
+            )
+            values = validate_parameter_values(value_interpretation, selection, catalogue)
         if value_interpretation.status != "valid":
             return ParameterReasoningResult(
                 status=value_interpretation.status, retrieval=retrieval,
                 selection_context=context, selection=selection,
                 value_interpretation=value_interpretation,
             )
-        values = validate_parameter_values(value_interpretation, selection, catalogue)
         return ParameterReasoningResult(
             status="valid", retrieval=retrieval, selection_context=context,
             selection=selection, value_interpretation=value_interpretation,

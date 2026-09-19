@@ -12,7 +12,7 @@ from ros_config_builder.integration import SystemModel
 from ros_config_builder.mission import (
     MissionInterpretation, MissionInterpreter, OllamaBackend, build_interpretation_prompt,
     evaluate_missions, load_capability_registry, validate_capability_registry,
-    write_evaluation_report,
+    validate_frozen_dataset, write_evaluation_report,
 )
 from ros_config_builder.templating import TemplateConfigurationSchema, TemplateManifest
 
@@ -41,17 +41,21 @@ def _read_json(path: Path) -> dict:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=Path, default=Path("data/evaluation_missions.jsonl"))
+    parser.add_argument("--dataset", type=Path, required=True,
+                        help="Training or test JSONL dataset to evaluate.")
     parser.add_argument("--output", type=Path, default=DEFAULT_EVALUATION_OUTPUT)
     parser.add_argument("--model", default=None)
     parser.add_argument("--prompt", type=Path, default=Path("prompts/mission_interpretation.txt"))
     parser.add_argument("--capability-registry", type=Path,
                         default=Path("configuration_templates/capability_registry.yaml"))
+    parser.add_argument("--allow-unfrozen-dataset", action="store_true",
+                        help="Development only: evaluate a dataset without frozen metadata.")
     return parser
 
 
 def main() -> int:
     args = _parser().parse_args()
+    validate_frozen_dataset(args.dataset, allow_unfrozen=args.allow_unfrozen_dataset)
     workspace = Path.cwd().resolve()
     _load_local_environment(workspace / ".env")
     system_model = SystemModel.model_validate(_read_json(

@@ -5,7 +5,9 @@ This stage answers only how the selected parameters should change. Never introdu
 that is absent from selected_records. Copy old_value exactly from current_value. Perform explicit
 unit conversion when the request provides enough information. Keep coupled occurrences consistent.
 Give a short, externally verifiable reason and quote only the shortest relevant phrase from the user
-as request_evidence. Use needs_clarification instead of guessing a missing or ambiguous value.
+as request_evidence. Provenance is associated deterministically with each parameter after this
+call; do not return evidence identifiers. Use needs_clarification instead of guessing a missing or
+ambiguous value.
 
 Selected parameter context:
 {{VALUE_CONTEXT}}

@@ -67,6 +67,41 @@ At startup it loads the saved ROS system model, configuration schema, renderer m
 
 ## Running the prototype
 
+### Run the complete pipeline
+
+From the repository root, run the following commands in order:
+
+```bash
+# Install the package and run all automated tests.
+python -m pip install -e .
+PYTHONPATH=src python -m unittest discover -s tests -t .
+
+# Rebuild and validate the deterministic system-model, template, evidence,
+# baseline, and scenario artifacts.
+PYTHONPATH=src python helper_scripts/regenerate_artifacts.py --workspace .
+
+# Optional: regenerate the LLM semantic-enrichment artifact. This requires
+# the Ollama model configured in src/ros_config_builder/parameters.yaml.
+PYTHONPATH=src python helper_scripts/enrich_parameters.py --workspace .
+
+# Run the mission configured in src/ros_config_builder/parameters.yaml.
+PYTHONPATH=src python src/ros_config_builder/orchestrate.py
+```
+
+Start Ollama before the enrichment or mission steps and ensure that the configured model is
+available. With the default configuration:
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder:7b
+```
+
+The enrichment step is optional when the application is configured to use only deterministic
+parameter evidence. The mission step writes its result to the `output_directory` selected in
+`src/ros_config_builder/parameters.yaml`.
+
+### Run individual stages
+
 Install the local package, then run the test suite:
 
 ```bash
@@ -139,3 +174,39 @@ The current 40-task parameter dataset is marked `pending_human_review`; the eval
 - [Step 6: retrieval, selection, and value reasoning](docs/step_6_parameter_reasoning.md)
 - [Step 7: validation and plan construction](docs/step_7_parameter_validation_and_plan.md)
 - [Step 8: rendering](docs/step_8_rendering.md)
+
+## The entire pipeline:
+PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --output artifacts/evaluation/train_v1
+
+PYTHONPATH=src python helper_scripts/evaluate_orchestrated_dataset.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --output artifacts/evaluation/test_v1
+
+
+## Only the capability reasoning:
+PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --output artifacts/capability_reasoning/train_fourth
+
+PYTHONPATH=src python helper_scripts/evaluate_capability_reasoning.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --output artifacts/capability_reasoning/test_initial
+
+
+Parameter evaluation and reasoning:
+PYTHONPATH=src python helper_scripts/evaluate_parameter_reasoning.py \
+  --dataset data/antrobot_train_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --context-variant names_values \
+  --output artifacts/parameter_reasoning/train_qwen_names_values
+
+
+PYTHONPATH=src python helper_scripts/evaluate_parameter_reasoning.py \
+  --dataset data/antrobot_test_mission_dataset_v1.jsonl \
+  --model qwen2.5-coder:7b \
+  --context-variant names_values \
+  --output artifacts/parameter_reasoning/test_qwen_names_values

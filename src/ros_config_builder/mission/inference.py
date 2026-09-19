@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from .schema import AntRobotCapabilityRegistry, MissionInterpretation, capability_prompt_catalogue
+
+logger = logging.getLogger(__name__)
 
 
 class ChatBackend(Protocol):
@@ -109,6 +112,15 @@ class OllamaBackend:
             raise RuntimeError("Ollama returned an unexpected response") from error
 
 
+def _correction_prompt(mission: str, raw: str, error: Exception) -> str:
+    return (
+        f"Mission: {mission}\n\n"
+        f"Your previous response was invalid:\n{raw}\n\n"
+        f"Validation error:\n{error}\n\n"
+        "Return a corrected JSON object only, satisfying the required schema."
+    )
+
+
 class MissionInterpreter:
     """Interpret capability choices, then realize them through a fixed registry."""
 
@@ -120,16 +132,30 @@ class MissionInterpreter:
         *,
         system_prompt: str,
         registry: AntRobotCapabilityRegistry,
+        max_retries: int = 1,
     ) -> None:
         self.backend = backend
         self.system_prompt = system_prompt
         self.registry = registry
+        self.max_retries = max_retries
 
     def interpret(self, mission: str) -> MissionInterpretation:
         if not mission.strip():
             raise ValueError("mission must not be empty")
-        raw = self.backend(self.system_prompt, mission.strip())
-        try:
-            return MissionInterpretation.model_validate(extract_json_object(raw))
-        except ValidationError as error:
-            raise ValueError(f"model output violates MissionInterpretation: {error}") from error
+        mission = mission.strip()
+        user_prompt = mission
+        attempts = self.max_retries + 1
+        last_error: ValueError | None = None
+        for attempt in range(1, attempts + 1):
+            raw = self.backend(self.system_prompt, user_prompt)
+            try:
+                return MissionInterpretation.model_validate(extract_json_object(raw))
+            except ValueError as error:
+                last_error = error
+                logger.warning(
+                    "mission interpretation attempt %d/%d rejected: %s", attempt, attempts, error,
+                )
+                user_prompt = _correction_prompt(mission, raw, error)
+        raise ValueError(
+            f"model output violates MissionInterpretation after {attempts} attempts: {last_error}"
+        ) from last_error

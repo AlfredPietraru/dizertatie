@@ -19,7 +19,7 @@ from .schema import AvailableParameter, MissionModel, ParameterCatalogue
 
 
 ContextVariant = Literal[
-    "names_values", "semantic", "source", "system", "graph", "metadata_graph",
+    "names_values", "semantic", "source", "system", "graph", "llm_semantic",
 ]
 RetrievalOrigin = Literal["exact", "lexical", "graph"]
 
@@ -49,7 +49,7 @@ class SelectionContext(MissionModel):
     query: str
     variant: ContextVariant
     records: list[dict[str, Any]]
-    graph_edges: list[dict[str, str]] = Field(default_factory=list)
+    graph_edges: list[dict[str, Any]] = Field(default_factory=list)
     included_parameter_ids: list[str]
     omitted_candidates: int
     character_count: int
@@ -81,6 +81,11 @@ def _tokens(value: Any) -> list[str]:
             if token not in _STOP_WORDS and len(token) > 1]
 
 
+def _contains_phrase(haystack: str, phrase: str) -> bool:
+    """Word-boundary containment: reject "map" inside "mapping"."""
+    return bool(phrase) and f" {phrase} " in f" {haystack} "
+
+
 def _evidence_ids(parameter: AvailableParameter) -> list[str]:
     if not parameter.evidence:
         return []
@@ -93,6 +98,24 @@ def _evidence_ids(parameter: AvailableParameter) -> list[str]:
 
 
 def _search_fields(parameter: AvailableParameter, variant: ContextVariant) -> dict[str, str]:
+    if variant == "llm_semantic":
+        metadata = parameter.llm_semantic_metadata
+        if metadata is None:
+            return {}
+        return {
+            "llm_description": metadata.description,
+            "llm_aliases": " ".join(metadata.aliases),
+            "llm_user_expressions": " ".join(metadata.user_expressions),
+            "llm_physical_quantity": metadata.physical_quantity or "",
+            "llm_unit": metadata.unit or "",
+            "llm_semantic_category": metadata.semantic_category or "",
+            "llm_behavioral_effect": " ".join(metadata.behavioral_effect),
+            "llm_constraints": " ".join(metadata.constraints),
+            "llm_relationships": " ".join(
+                f"{item.relation} {item.target_parameter_id} {item.reason} {item.confidence}"
+                for item in metadata.relationships
+            ),
+        }
     fields = {
         "identifier": parameter.parameter_id,
         "name": parameter.semantic_name,
@@ -137,15 +160,26 @@ def _search_fields(parameter: AvailableParameter, variant: ContextVariant) -> di
 def _graph(
     catalogue: ParameterCatalogue,
     wiring_bindings: dict[str, dict[str, Any]] | None,
+    *,
+    llm_semantic_only: bool = False,
 ) -> dict[str, set[str]]:
     identifiers = {item.parameter_id for item in catalogue.parameters}
     graph: dict[str, set[str]] = {identifier: set() for identifier in identifiers}
     for parameter in catalogue.parameters:
-        for relationship in parameter.relationships:
-            target = relationship.get("target")
+        relationships = (
+            parameter.llm_semantic_metadata.relationships
+            if llm_semantic_only and parameter.llm_semantic_metadata else []
+        )
+        if not llm_semantic_only:
+            relationships = parameter.relationships
+        for relationship in relationships:
+            target = (relationship.target_parameter_id if llm_semantic_only
+                      else relationship.get("target"))
             if target in identifiers:
                 graph[parameter.parameter_id].add(target)
                 graph[target].add(parameter.parameter_id)
+    if llm_semantic_only:
+        return graph
     for binding in (wiring_bindings or {}).values():
         targets = [item for item in binding.get("parameter_keys", []) if item in identifiers]
         for left in targets:
@@ -158,7 +192,7 @@ def retrieve_parameters(
     catalogue: ParameterCatalogue,
     *,
     variant: ContextVariant = "graph",
-    top_k: int = 12,
+    top_k: int = 10,
     graph_hops: int = 1,
     max_candidates: int = 24,
     wiring_bindings: dict[str, dict[str, Any]] | None = None,
@@ -167,6 +201,12 @@ def retrieve_parameters(
     if top_k < 1 or graph_hops < 0 or max_candidates < top_k:
         raise ValueError("retrieval requires top_k >= 1, graph_hops >= 0, and max_candidates >= top_k")
     parameters = sorted(catalogue.parameters, key=lambda item: item.parameter_id)
+    if variant == "llm_semantic" and not any(
+        item.llm_semantic_metadata is not None for item in parameters
+    ):
+        raise ValueError(
+            "llm_semantic retrieval requires a semantic-enrichment artifact"
+        )
     documents = {item.parameter_id: _search_fields(item, variant) for item in parameters}
     tokenized = {
         identifier: {field: _tokens(text) for field, text in fields.items()}
@@ -195,26 +235,25 @@ def retrieve_parameters(
                     continue
                 matched_fields.add(field)
                 inverse_frequency = math.log((total + 1) / (document_frequency[token] + 0.5)) + 1.0
-                field_weight = {
-                    "identifier": 3.0,
-                    "name": 2.5,
-                    "aliases": 2.5,
-                    "user_expressions": 2.0,
-                    "description": 1.8,
-                    "behavioral_effect": 1.6,
-                    "source": 1.2,
-                }.get(field, 1.0)
+                # A bare component/node-name mention (e.g. "run Cartographer") should not by
+                # itself make every parameter under that node look relevant - components are
+                # already resolved by the capability-interpretation stage, not this one.
+                field_weight = {"identifier": 3.0, "name": 2.5, "description": 1.8,
+                                "behavioral_effect": 1.6, "source": 1.2,
+                                "component": 0.2}.get(field, 1.0)
                 score += inverse_frequency * field_weight * (1.0 + math.log(count))
         short_name = identifier.rsplit(".", 1)[-1]
-        exact_terms = [identifier, short_name, parameter.semantic_name, *parameter.aliases]
-        exact = any(
-            normalized and normalized in normalized_query
-            for normalized in (_normalize_text(term) for term in exact_terms)
+        exact = variant != "llm_semantic" and (
+            _contains_phrase(normalized_query, _normalize_text(identifier))
+            or _contains_phrase(normalized_query, _normalize_text(short_name))
+            or _contains_phrase(normalized_query, _normalize_text(parameter.semantic_name))
         )
         if exact:
             score += 100.0
             matched_fields.add("exact_name")
-        if score > 0:
+        # A candidate matched only on its owning component/node name carries no evidence that
+        # this specific parameter (as opposed to any other one on the same node) is relevant.
+        if score > 0 and matched_fields != {"component"}:
             scored.append((score, identifier, sorted(matched_fields), "exact" if exact else "lexical"))
     scored.sort(key=lambda item: (-item[0], item[1]))
     selected = scored[:top_k]
@@ -222,11 +261,14 @@ def retrieve_parameters(
     candidates: list[RetrievalCandidate] = [
         RetrievalCandidate(parameter_id=identifier, score=round(score, 8), rank=index,
                            matched_fields=matched, retrieval_origin=origin,
-                           evidence_ids=_evidence_ids(by_id[identifier]))
+                           evidence_ids=([] if variant == "llm_semantic"
+                                         else _evidence_ids(by_id[identifier])))
         for index, (score, identifier, matched, origin) in enumerate(selected, 1)
     ]
-    if variant in {"graph", "metadata_graph"} and graph_hops and candidates:
-        adjacency = _graph(catalogue, wiring_bindings)
+    if variant in {"graph", "llm_semantic"} and graph_hops and candidates:
+        adjacency = _graph(
+            catalogue, wiring_bindings, llm_semantic_only=variant == "llm_semantic",
+        )
         known = {item.parameter_id for item in candidates}
         queue = deque((item.parameter_id, 0, item.parameter_id) for item in candidates)
         while queue and len(candidates) < max_candidates:
@@ -242,7 +284,9 @@ def retrieve_parameters(
                     parameter_id=neighbor, score=round(parent_score / (10 * next_distance), 8),
                     rank=len(candidates) + 1, matched_fields=["relationship"],
                     retrieval_origin="graph", graph_distance=next_distance,
-                    parent_parameter_id=current, evidence_ids=_evidence_ids(by_id[neighbor]),
+                    parent_parameter_id=current,
+                    evidence_ids=([] if variant == "llm_semantic"
+                                  else _evidence_ids(by_id[neighbor])),
                 ))
                 known.add(neighbor)
                 queue.append((neighbor, next_distance, seed))
@@ -255,6 +299,20 @@ def retrieve_parameters(
 
 
 def _context_record(parameter: AvailableParameter, variant: ContextVariant) -> dict[str, Any]:
+    if variant == "llm_semantic":
+        metadata = parameter.llm_semantic_metadata
+        return {
+            "parameter_id": parameter.parameter_id,
+            "kind": parameter.kind,
+            "value_type": parameter.value_type,
+            "current_value": parameter.current_value,
+            "minimum": parameter.minimum,
+            "maximum": parameter.maximum,
+            "allowed_values": parameter.allowed_values,
+            "semantic_metadata": (
+                metadata.model_dump(mode="json") if metadata is not None else None
+            ),
+        }
     record: dict[str, Any] = {
         "parameter_id": parameter.parameter_id,
         "component_id": parameter.component_id,
@@ -304,12 +362,11 @@ def build_selection_context(
         raise ValueError("selection context character budget must be at least 1000")
     by_id = {item.parameter_id: item for item in catalogue.parameters}
     records: list[dict[str, Any]] = []
-    graph_edges: list[dict[str, str]] = []
+    graph_edges: list[dict[str, Any]] = []
     used = 2
     for candidate in retrieval.candidates:
         parameter = by_id[candidate.parameter_id]
         record = _context_record(parameter, retrieval.variant)
-        record["retrieval"] = candidate.model_dump(mode="json")
         serialized = json.dumps(record, sort_keys=True, default=str)
         if records and used + len(serialized) > character_budget:
             break
@@ -325,6 +382,22 @@ def build_selection_context(
                     graph_edges.append({"source": parameter.parameter_id,
                                         "kind": relationship.get("kind", "related"),
                                         "target": relationship["target"]})
+        elif retrieval.variant == "llm_semantic" and parameter.llm_semantic_metadata:
+            for relationship in parameter.llm_semantic_metadata.relationships:
+                graph_edges.append({
+                    "source": parameter.parameter_id,
+                    "kind": relationship.relation,
+                    "target": relationship.target_parameter_id,
+                    "reason": relationship.reason,
+                    "confidence": relationship.confidence,
+                })
+    # Retrieval rank decides shortlist membership, but must not bias the LLM's
+    # independent semantic decision through scores, ranks, or record position.
+    records.sort(key=lambda record: record["parameter_id"])
+    graph_edges.sort(key=lambda edge: (
+        str(edge.get("source", "")), str(edge.get("target", "")),
+        str(edge.get("kind", "")),
+    ))
     included = [record["parameter_id"] for record in records]
     return SelectionContext(
         query=retrieval.query, variant=retrieval.variant, records=records,

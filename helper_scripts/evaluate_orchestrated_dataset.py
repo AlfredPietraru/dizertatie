@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from ros_config_builder.mission import (
-    MissionInterpretation, build_parameter_system_context,
+    MissionInterpretation, ParameterSelectionInterpretation,
+    build_parameter_selection_system_context,
     derive_parameter_catalogue, realize_capabilities,
-    resolve_ros_orchestration,
+    resolve_ros_orchestration, retrieve_parameters,
+    validate_frozen_dataset,
 )
+from ros_config_builder.mission.inference import extract_json_object
 from ros_config_builder.orchestrate import (
     DEFAULT_CONFIGURATION_PATH, ApplicationConfiguration, build_mission_application,
     load_application_configuration,
@@ -26,30 +29,42 @@ from ros_config_builder.orchestrate import (
 
 
 DEFAULT_OUTPUT = Path("artifacts/evaluation/orchestrated")
-DEFAULT_DATASETS = (
-    Path("data/evaluation_missions.jsonl"),
-    Path("data/antrobot_mission_dataset_v1.jsonl"),
-)
-
-
 class _RecordingBackend:
     """Transparent backend wrapper retaining the exact prompt and raw LLM response."""
 
     def __init__(self, backend: Any, stage: str) -> None:
         self.backend, self.stage = backend, stage
         self.calls: list[dict[str, Any]] = []
+        self.call_count = 0
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.backend, name)
 
     def __call__(self, system_prompt: str, user_prompt: str) -> str:
+        self.call_count += 1
+        call_number = self.call_count
+        started = time.perf_counter()
         call = {"stage": self.stage, "system_prompt": system_prompt,
-                "user_prompt": user_prompt, "raw_response": None, "error": None}
+                "user_prompt": user_prompt, "raw_response": None, "error": None,
+                "call": call_number, "latency_seconds": None}
+        print(f"  [{self.stage}] LLM call {call_number} started", flush=True)
         try:
             call["raw_response"] = self.backend(system_prompt, user_prompt)
+            elapsed = time.perf_counter() - started
+            call["latency_seconds"] = elapsed
+            print(
+                f"  [{self.stage}] LLM call {call_number} completed in {elapsed:.1f}s",
+                flush=True,
+            )
             return call["raw_response"]
         except Exception as error:
             call["error"] = f"{type(error).__name__}: {error}"
+            elapsed = time.perf_counter() - started
+            call["latency_seconds"] = elapsed
+            print(
+                f"  [{self.stage}] LLM call {call_number} failed after {elapsed:.1f}s: "
+                f"{call['error']}", flush=True,
+            )
             raise
         finally:
             self.calls.append(call)
@@ -61,11 +76,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--configuration", type=Path, default=DEFAULT_CONFIGURATION_PATH)
     parser.add_argument(
-        "--dataset", type=Path, action="append",
-        help="JSONL dataset; repeat to compare runs (defaults to evaluation + generated).",
+        "--dataset", type=Path, action="append", required=True,
+        help="JSONL dataset; repeat the option to compare multiple datasets.",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--allow-unfrozen-dataset", action="store_true",
+                        help="Development only: evaluate datasets without frozen metadata.")
     return parser
 
 
@@ -121,11 +138,124 @@ def _append_checkpoint(path: Path, record: dict[str, Any]) -> None:
         os.fsync(stream.fileno())
 
 
+def _pretty_prompt_for_log(prompt: str) -> str:
+    """Pretty-print embedded JSON in persisted prompts without changing runtime input."""
+    decoder = json.JSONDecoder()
+    for marker in (
+        "Stable system context:\n", "Bounded selection context:\n",
+        "Selected parameter context:\n", "Required JSON schema:\n",
+        "AntRobot capability catalogue:\n",
+    ):
+        search_from = 0
+        while True:
+            marker_index = prompt.find(marker, search_from)
+            if marker_index < 0:
+                break
+            value_start = marker_index + len(marker)
+            try:
+                value, consumed = decoder.raw_decode(prompt[value_start:])
+            except json.JSONDecodeError:
+                search_from = value_start
+                continue
+            rendered = json.dumps(value, indent=2, sort_keys=True)
+            prompt = prompt[:value_start] + rendered + prompt[value_start + consumed:]
+            search_from = value_start + len(rendered)
+    return prompt
+
+
+def _failure_detail(record: dict[str, Any]) -> str:
+    lines: list[str] = []
+    if record.get("error"):
+        lines += ["Runtime or validation error:", str(record["error"]), ""]
+    if not record.get("outcome_correct"):
+        lines += [
+            "Outcome mismatch:",
+            f"expected={record['expected']['status']}",
+            f"predicted={record.get('predicted_status')}", "",
+        ]
+    comparisons = (
+        ("Capability mismatch", record["expected"]["capabilities"],
+         record.get("predicted_capabilities", {}), record.get("capability_exact_match")),
+        ("Parameter-selection mismatch", sorted(record["expected"]["parameters"]),
+         sorted(record.get("selected_parameter_ids", [])),
+         record.get("parameter_selection_exact_match")),
+        ("Parameter-value mismatch", record["expected"]["parameters"],
+         record.get("predicted_parameters", {}), record.get("parameter_values_exact_match")),
+    )
+    for title, expected, predicted, exact in comparisons:
+        if not exact:
+            lines += [title + ":", "expected=" + json.dumps(expected, indent=2, sort_keys=True),
+                      "predicted=" + json.dumps(predicted, indent=2, sort_keys=True), ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_failure_artifacts(output: Path, record: dict[str, Any]) -> None:
+    failure = output / "failures" / str(record["id"])
+    failure.mkdir(parents=True, exist_ok=True)
+    failure.joinpath("expected_result.json").write_text(
+        json.dumps(record["expected"], indent=2, sort_keys=True) + "\n", encoding="utf-8",
+    )
+    actual_result = {
+        "status": record.get("predicted_status"),
+        "capabilities": record.get("predicted_capabilities", {}),
+        "selected_parameter_ids": record.get("selected_parameter_ids", []),
+        "parameters": record.get("predicted_parameters", {}),
+        "retrieval": record.get("retrieval"),
+        "selection": record.get("selection"),
+        "parameter_status": record.get("parameter_predicted_status"),
+        "llm_outputs": record.get("llm_outputs", {}),
+        "failure_stage": record.get("failure_stage"),
+        "error": record.get("error"),
+    }
+    failure.joinpath("actual_result.json").write_text(
+        json.dumps(actual_result, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+    )
+    failure.joinpath("error.txt").write_text(_failure_detail(record), encoding="utf-8")
+    calls = record.get("llm_calls", [])
+    failure.joinpath("llm_calls.json").write_text(
+        json.dumps(calls, indent=2, sort_keys=True) + "\n", encoding="utf-8",
+    )
+    if not calls:
+        failure.joinpath("system_prompt.txt").write_text(
+            "No LLM call was reached.\n", encoding="utf-8",
+        )
+        failure.joinpath("user_prompt.txt").write_text(
+            record["mission"] + "\n", encoding="utf-8",
+        )
+        failure.joinpath("model_response.txt").write_text(
+            "No model response was produced.\n", encoding="utf-8",
+        )
+        return
+    final_call = calls[-1]
+    failure.joinpath("system_prompt.txt").write_text(
+        _pretty_prompt_for_log(str(final_call["system_prompt"])) + "\n", encoding="utf-8",
+    )
+    failure.joinpath("user_prompt.txt").write_text(
+        str(final_call["user_prompt"]) + "\n", encoding="utf-8",
+    )
+    failure.joinpath("model_response.txt").write_text(
+        str(final_call.get("raw_response") or "No model response was produced.") + "\n",
+        encoding="utf-8",
+    )
+    for index, call in enumerate(calls, start=1):
+        stem = f"{index:02d}_{call['stage']}"
+        failure.joinpath(stem + "_system_prompt.txt").write_text(
+            _pretty_prompt_for_log(str(call["system_prompt"])) + "\n", encoding="utf-8",
+        )
+        failure.joinpath(stem + "_user_prompt.txt").write_text(
+            str(call["user_prompt"]) + "\n", encoding="utf-8",
+        )
+        failure.joinpath(stem + "_model_response.txt").write_text(
+            str(call.get("raw_response") or "No model response was produced.") + "\n",
+            encoding="utf-8",
+        )
+
+
 def _sparse(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: cleaned for key, item in value.items()
-            if (cleaned := _sparse(item)) not in (None, {}, [])
+            if (cleaned := _sparse(item)) not in ({}, [])
         }
     if isinstance(value, list):
         return [_sparse(item) for item in value]
@@ -180,6 +310,20 @@ def _prf(expected: dict[str, Any], predicted: dict[str, Any]) -> tuple[int, int,
     return len(gold & guess), len(guess - gold), len(gold - guess)
 
 
+def _selection_scores(expected: set[str], predicted: set[str]) -> dict[str, Any]:
+    true_positive = len(expected & predicted)
+    precision = true_positive / len(predicted) if predicted else (1.0 if not expected else None)
+    recall = true_positive / len(expected) if expected else (1.0 if not predicted else None)
+    f1 = (2 * precision * recall / (precision + recall)
+          if precision is not None and recall is not None and precision + recall else 0.0)
+    return {
+        "true_positive": true_positive, "predicted": len(predicted), "expected": len(expected),
+        "precision": precision, "recall": recall, "f1": f1,
+        "exact": expected == predicted, "missed": sorted(expected - predicted),
+        "over_selected": sorted(predicted - expected),
+    }
+
+
 def _rate(count: int, total: int) -> dict[str, int | float | None]:
     return {"count": count, "total": total, "rate": count / total if total else None}
 
@@ -196,6 +340,7 @@ def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
     valid_gold = [item for item in records if item["expected"]["status"] == "valid"]
     metrics: dict[str, Any] = {
         "missions": total,
+        "errors": sum(item["error"] is not None for item in records),
         "pipeline_completed": _rate(sum(item["error"] is None for item in records), total),
         "outcome_accuracy": _rate(sum(item["outcome_correct"] for item in records), total),
         "capability_exact_match": _rate(
@@ -231,6 +376,100 @@ def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         "mean": sum(latencies) / len(latencies) if latencies else None,
         "p50": _percentile(latencies, .5), "p95": _percentile(latencies, .95),
     }
+    parameter_cases = [item for item in valid_gold if item["expected"]["parameters"]]
+    retrieval_cases = [item for item in parameter_cases if item.get("retrieval") is not None]
+    selection_tp = sum(item.get("selection", {}).get("true_positive", 0)
+                       for item in parameter_cases)
+    selection_predicted = sum(item.get("selection", {}).get("predicted", 0)
+                              for item in parameter_cases)
+    selection_expected = sum(item.get("selection", {}).get(
+        "expected", len(item["expected"]["parameters"]),
+    ) for item in parameter_cases)
+    selection_precision = selection_tp / selection_predicted if selection_predicted else None
+    selection_recall = selection_tp / selection_expected if selection_expected else None
+    value_total = sum(len(item["expected"]["parameters"]) for item in parameter_cases)
+    value_correct = sum(
+        sum(item.get("predicted_parameters", {}).get(key) == value
+            for key, value in item["expected"]["parameters"].items())
+        for item in parameter_cases
+    )
+    metrics["parameter_reasoning"] = {
+        "cases": len(valid_gold),
+        "parameter_change_cases": len(parameter_cases),
+        "errors": sum(item["error"] is not None for item in valid_gold),
+        "retrieval_top_1_recall": (
+            sum(item["retrieval"]["top_1_recall"] or 0 for item in retrieval_cases)
+            / len(retrieval_cases) if retrieval_cases else None
+        ),
+        "retrieval_top_3_recall": (
+            sum(item["retrieval"]["top_3_recall"] or 0 for item in retrieval_cases)
+            / len(retrieval_cases) if retrieval_cases else None
+        ),
+        "retrieval_top_5_recall": (
+            sum(item["retrieval"]["top_5_recall"] or 0 for item in retrieval_cases)
+            / len(retrieval_cases) if retrieval_cases else None
+        ),
+        "retrieval_mrr": (
+            sum(
+                sum(item["retrieval"]["reciprocal_ranks"].values())
+                / len(item["retrieval"]["reciprocal_ranks"])
+                for item in retrieval_cases
+            ) / len(retrieval_cases) if retrieval_cases else None
+        ),
+        "selection_exact_set_accuracy": (
+            sum(bool(item.get("selection", {}).get("exact")) for item in parameter_cases)
+            / len(parameter_cases) if parameter_cases else None
+        ),
+        "selection_micro_precision": selection_precision,
+        "selection_micro_recall": selection_recall,
+        "selection_micro_f1": (
+            2 * selection_precision * selection_recall / (selection_precision + selection_recall)
+            if selection_precision is not None and selection_recall is not None
+            and selection_precision + selection_recall else 0.0
+        ),
+        "value_accuracy": value_correct / value_total if value_total else None,
+        "complete_value_set_accuracy": (
+            sum(item["parameter_values_exact_match"] for item in parameter_cases)
+            / len(parameter_cases) if parameter_cases else None
+        ),
+        "outcome_accuracy": (
+            sum(bool(item.get("parameter_outcome_correct")) for item in valid_gold)
+            / len(valid_gold) if valid_gold else None
+        ),
+    }
+    capability_tp = sum(item["capability_counts"]["tp"] for item in valid_gold)
+    capability_fp = sum(item["capability_counts"]["fp"] for item in valid_gold)
+    capability_fn = sum(item["capability_counts"]["fn"] for item in valid_gold)
+    capability_precision = (
+        capability_tp / (capability_tp + capability_fp)
+        if capability_tp + capability_fp else None
+    )
+    capability_recall = (
+        capability_tp / (capability_tp + capability_fn)
+        if capability_tp + capability_fn else None
+    )
+    metrics["capability_reasoning"] = {
+        "cases": total,
+        "errors": sum(
+            item["error"] is not None and item.get("failure_stage") == "capability_interpretation"
+            for item in records
+        ),
+        "status_accuracy": (
+            sum(bool(item.get("capability_status_correct")) for item in records) / total
+            if total else None
+        ),
+        "exact_capability_accuracy": (
+            sum(item["capability_exact_match"] for item in valid_gold) / len(valid_gold)
+            if valid_gold else None
+        ),
+        "field_micro_precision": capability_precision,
+        "field_micro_recall": capability_recall,
+        "field_micro_f1": (
+            2 * capability_precision * capability_recall / (capability_precision + capability_recall)
+            if capability_precision is not None and capability_recall is not None
+            and capability_precision + capability_recall else 0.0
+        ),
+    }
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in records:
         if item.get("source_seed"):
@@ -258,13 +497,6 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
         "dataset": str(path), "fingerprint": fingerprint,
         "limit": limit, "status": "in_progress",
     }
-    if checkpoint_path.is_file():
-        existing_checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        if (existing_checkpoint.get("fingerprint") != fingerprint
-                or existing_checkpoint.get("limit") != limit):
-            raise ValueError(
-                f"cannot resume {output}: dataset, prompts, configuration, or limit changed"
-            )
     checkpoint_path.write_text(
         json.dumps(checkpoint, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -300,11 +532,20 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
             raise ValueError(f"checkpoint mission changed for {item['id']}")
     if records:
         print(f"[{path.name}] resuming with {len(records)}/{len(cases)} cases saved", flush=True)
+        for saved_record in records:
+            if not saved_record.get("llm_end_to_end_exact_match"):
+                _write_failure_artifacts(output, saved_record)
+    running_correct = sum(bool(item["llm_end_to_end_exact_match"]) for item in records)
+    running_errors = sum(item.get("error") is not None for item in records)
     for index, case in enumerate(cases):
         case_id = str(case.get("id", f"case-{index + 1:04d}"))
         if case_id in completed:
             continue
         expected = _expected(case)
+        print(
+            f"[{path.name}] case {index + 1}/{len(cases)} {case_id} started: "
+            f"{case['mission']}", flush=True,
+        )
         call_offsets = [len(backend.calls) for backend in
                         (capability_backend, selection_backend, value_backend)]
         started = time.perf_counter()
@@ -312,6 +553,8 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
         failure_stage = "capability_interpretation"
         interpretation = None
         reasoning = None
+        retrieval = None
+        recovered_selection = None
         try:
             interpretation = application.interpreter.interpret(case["mission"])
             if interpretation.status == "valid":
@@ -329,21 +572,59 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
                     evidence_by_id=application.parameter_evidence,
                     semantic_enrichments=application.semantic_enrichments,
                 )
+                retrieval = retrieve_parameters(
+                    case["mission"], catalogue,
+                    variant=application.parameter_reasoner.context_variant,
+                    top_k=application.parameter_reasoner.top_k,
+                    graph_hops=application.parameter_reasoner.graph_hops,
+                    max_candidates=application.parameter_reasoner.max_candidates,
+                    wiring_bindings=application.manifest.get("wiring_bindings", {}),
+                )
                 failure_stage = "parameter_reasoning"
                 reasoning = application.parameter_reasoner.reason(
                     case["mission"], catalogue,
-                    system_context=build_parameter_system_context(realization, orchestration),
+                    system_context=build_parameter_selection_system_context(
+                        orchestration.model_dump(mode="json"),
+                    ),
                     wiring_bindings=application.manifest.get("wiring_bindings", {}),
                 )
         except Exception as caught:  # Every failed inference/validation remains an evaluation failure.
             error = f"{type(caught).__name__}: {caught}"
         latency = time.perf_counter() - started
-        predicted_status = interpretation.status if interpretation is not None else "error"
-        predicted_capabilities = _sparse(interpretation.capabilities.model_dump(mode="json")) \
-            if interpretation is not None and interpretation.capabilities is not None else {}
+        new_calls = [call for backend, offset in zip(
+            (capability_backend, selection_backend, value_backend), call_offsets
+        ) for call in backend.calls[offset:]]
+        if reasoning is not None:
+            recovered_selection = reasoning.selection
+            retrieval = reasoning.retrieval
+        else:
+            selection_calls = [
+                call for call in new_calls
+                if call["stage"] == "parameter_selection" and call.get("raw_response")
+            ]
+            if selection_calls:
+                try:
+                    recovered_selection = ParameterSelectionInterpretation.model_validate(
+                        extract_json_object(selection_calls[-1]["raw_response"])
+                    )
+                except ValueError:
+                    recovered_selection = None
+        if interpretation is None:
+            predicted_status = "error"
+        elif interpretation.status != "valid":
+            predicted_status = interpretation.status
+        elif reasoning is None:
+            predicted_status = "error"
+        else:
+            predicted_status = (
+                "valid" if reasoning.status in {"valid", "no_change"} else reasoning.status
+            )
+        predicted_capabilities = _sparse(
+            interpretation.capabilities.model_dump(mode="json")
+        ) if interpretation is not None and interpretation.capabilities is not None else {}
         selected = {
             item.parameter_id: True
-            for item in (reasoning.selection.selected_parameters if reasoning else [])
+            for item in (recovered_selection.selected_parameters if recovered_selection else [])
         }
         predicted_parameters = dict(reasoning.validated_values) if reasoning else {}
         capability_counts = _prf(_leaves(expected["capabilities"]), _leaves(predicted_capabilities))
@@ -351,13 +632,46 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
         selection_counts = _prf(expected_selection, selected)
         value_counts = _prf(expected["parameters"], predicted_parameters)
         capability_exact = predicted_capabilities == expected["capabilities"]
-        selection_exact = error is None and selected == expected_selection
+        selection_exact = selected == expected_selection
         values_exact = error is None and predicted_parameters == expected["parameters"]
+        expected_parameter_ids = set(expected["parameters"])
+        ranked = [item.parameter_id for item in retrieval.candidates] if retrieval else []
+        ranks = {identifier: rank for rank, identifier in enumerate(ranked, start=1)}
+        parameter_expected_status = "valid" if expected_parameter_ids else "no_change"
+        parameter_predicted_status = (
+            reasoning.status if reasoning is not None
+            else recovered_selection.status if recovered_selection is not None and error is None
+            else "error"
+        )
         record = {
             "id": case_id, "source_seed": case.get("source_seed"), "mission": case["mission"],
             "expected": expected, "predicted_status": predicted_status,
+            "capability_predicted_status": (
+                interpretation.status if interpretation is not None else "error"
+            ),
+            "capability_status_correct": (
+                interpretation is not None and interpretation.status == expected["status"]
+            ),
             "predicted_capabilities": predicted_capabilities,
+            "selected_parameter_ids": sorted(selected),
             "predicted_parameters": predicted_parameters,
+            "retrieval": {
+                "ranked_parameter_ids": ranked,
+                "top_1_recall": (sum(identifier in ranked[:1] for identifier in expected_parameter_ids)
+                                 / len(expected_parameter_ids) if expected_parameter_ids else None),
+                "top_3_recall": (sum(identifier in ranked[:3] for identifier in expected_parameter_ids)
+                                 / len(expected_parameter_ids) if expected_parameter_ids else None),
+                "top_5_recall": (sum(identifier in ranked[:5] for identifier in expected_parameter_ids)
+                                 / len(expected_parameter_ids) if expected_parameter_ids else None),
+                "reciprocal_ranks": {
+                    identifier: (1 / ranks[identifier] if identifier in ranks else 0.0)
+                    for identifier in sorted(expected_parameter_ids)
+                },
+            } if retrieval is not None else None,
+            "selection": _selection_scores(expected_parameter_ids, set(selected)),
+            "parameter_expected_status": parameter_expected_status,
+            "parameter_predicted_status": parameter_predicted_status,
+            "parameter_outcome_correct": parameter_predicted_status == parameter_expected_status,
             "outcome_correct": predicted_status == expected["status"],
             "capability_exact_match": capability_exact,
             "parameter_selection_exact_match": selection_exact,
@@ -371,16 +685,15 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
                     interpretation.model_dump(mode="json") if interpretation else None
                 ),
                 "parameter_selection": (
-                    reasoning.selection.model_dump(mode="json") if reasoning else None
+                    recovered_selection.model_dump(mode="json")
+                    if recovered_selection is not None else None
                 ),
                 "parameter_value_interpretation": (
                     reasoning.value_interpretation.model_dump(mode="json")
                     if reasoning and reasoning.value_interpretation else None
                 ),
             },
-            "llm_calls": [call for backend, offset in zip(
-                (capability_backend, selection_backend, value_backend), call_offsets
-            ) for call in backend.calls[offset:]],
+            "llm_calls": new_calls,
             "capability_counts": dict(zip(("tp", "fp", "fn"), capability_counts)),
             "parameter_selection_counts": dict(zip(("tp", "fp", "fn"), selection_counts)),
             "parameter_value_counts": dict(zip(("tp", "fp", "fn"), value_counts)),
@@ -390,8 +703,17 @@ def evaluate_dataset(path: Path, configuration: ApplicationConfiguration,
         records.append(record)
         completed.add(case_id)
         _append_checkpoint(predictions_path, record)
-        print(f"[{path.name}] {index + 1}/{len(cases)} {case_id}: "
-              f"{'pass' if record['llm_end_to_end_exact_match'] else 'fail'}", flush=True)
+        if not record["llm_end_to_end_exact_match"]:
+            _write_failure_artifacts(output, record)
+        running_correct += int(bool(record["llm_end_to_end_exact_match"]))
+        running_errors += int(error is not None)
+        detail = f" error={error}" if error else ""
+        print(
+            f"[{path.name}] case {index + 1}/{len(cases)} {case_id} finished: "
+            f"end_to_end_correct={record['llm_end_to_end_exact_match']} "
+            f"running_completed={len(completed)} running_correct={running_correct} "
+            f"running_errors={running_errors}{detail}", flush=True,
+        )
     records.sort(key=lambda item: list(case_by_id).index(item["id"]))
     predictions_path.write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in records), encoding="utf-8"
@@ -473,7 +795,9 @@ def main() -> int:
     configuration = load_application_configuration(args.configuration)
     if configuration.operation != "mission":
         raise SystemExit("evaluation requires operation='mission' in the configuration")
-    datasets = args.dataset or list(DEFAULT_DATASETS)
+    datasets = args.dataset
+    for dataset in datasets:
+        validate_frozen_dataset(dataset, allow_unfrozen=args.allow_unfrozen_dataset)
     reports = []
     for path in datasets:
         reports.append(evaluate_dataset(

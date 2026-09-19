@@ -1,17 +1,113 @@
+% Corrected bibliography entries
+% Verified/corrected from the previously reviewed reference list.
+
 @inproceedings{quigley2009ros,
-  author    = {M. Quigley and K. Conley and B. Gerkey and J. Faust and T. Foote and J. Leibs and R. Wheeler and A. Y. Ng},
+  author    = {Morgan Quigley and Brian Gerkey and Ken Conley and Josh Faust and
+               Tully Foote and Jeremy Leibs and Eric Berger and Rob Wheeler and
+               Andrew Y. Ng},
   title     = {ROS: an Open-Source Robot Operating System},
   booktitle = {ICRA Workshop on Open Source Software},
   year      = {2009}
 }
 
-
-@misc{roscribe2025,
-  author = {{RoboCoach Technologies}},
-  title = {ROScribe: Natural Language Interface for ROS Task Configuration},
-  year = {2025},
-  howpublished = {\url{https://github.com/RoboCoachTechnologies/ROScribe}}
+@misc{roscribe,
+  author       = {{RoboCoach Technologies}},
+  title        = {{ROScribe}},
+  howpublished = {\url{https://github.com/RoboCoachTechnologies/ROScribe}},
+  note         = {Open-source LLM-based ROS package generation framework, accessed September 2026}
 }
+
+@article{merkel2014docker,
+  author  = {Dirk Merkel},
+  title   = {Docker: Lightweight Linux Containers for Consistent Development and Deployment},
+  journal = {Linux Journal},
+  number  = {239},
+  year    = {2014}
+}
+
+@inproceedings{lampe2023robotkube,
+  author    = {Bastian Lampe and Lennart Reiher and Lukas Zanger and Timo Woopen and
+               Raphael van Kempen and Lutz Eckstein},
+  title     = {RobotKube: Orchestrating Large-Scale Cooperative Multi-Robot Systems with Kubernetes and ROS},
+  booktitle = {2023 IEEE 26th International Conference on Intelligent Transportation Systems (ITSC)},
+  pages     = {2719--2725},
+  year      = {2023},
+  publisher = {IEEE},
+  doi       = {10.1109/ITSC57777.2023.10422370}
+}
+
+@misc{osrfnexus,
+  author       = {{Open Robotics}},
+  title        = {{NEXUS}: A Framework for Orchestration},
+  howpublished = {\url{https://github.com/osrf/nexus}},
+  note         = {ROS 2 framework for configuration and orchestration of process workflows, accessed September 2026}
+}
+
+@article{jiang2023mistral,
+  author  = {Albert Q. Jiang and Alexandre Sablayrolles and Arthur Mensch and
+             Chris Bamford and Devendra Singh Chaplot and Diego de las Casas and
+             Florian Bressand and Gianna Lengyel and Guillaume Lample and
+             Lucile Saulnier and L{\'e}lio Renard Lavaud and Marie-Anne Lachaux and
+             Pierre Stock and Teven Le Scao and Thibaut Lavril and Thomas Wang and
+             Timoth{\'e}e Lacroix and William El Sayed},
+  title   = {Mistral 7B},
+  journal = {arXiv preprint arXiv:2310.06825},
+  year    = {2023}
+}
+
+@article{deepseekcoder2024,
+  author  = {Daya Guo et al.},
+  title   = {DeepSeek-Coder: When the Large Language Model Meets Programming -- The Rise of Code Intelligence},
+  journal = {arXiv preprint arXiv:2401.14196},
+  year    = {2024}
+}
+
+@article{deepseekr12025,
+  author  = {Daya Guo et al.},
+  title   = {DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning},
+  journal = {arXiv preprint arXiv:2501.12948},
+  year    = {2025}
+}
+
+@article{thinkinsidejson2025,
+  author  = {B. Agarwal and I. Joshi and V. Rojkova},
+  title   = {Think Inside the JSON: Reinforcement Strategy for Strict LLM Schema Adherence},
+  journal = {arXiv preprint arXiv:2502.14905},
+  year    = {2025}
+}
+
+@article{wu2023autogen,
+  author  = {Qingyun Wu and Gagan Bansal and Jieyu Zhang and Yiran Wu and
+             Shaokun Zhang and Erkang Zhu and Beibin Li and Li Jiang and
+             Xiaoyun Zhang and Chi Wang},
+  title   = {AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation Framework},
+  journal = {arXiv preprint arXiv:2308.08155},
+  year    = {2023}
+}
+
+@article{ahn2022saycan,
+  author  = {Michael Ahn and Anthony Brohan and Noah Brown and Yevgen Chebotar and
+             Omar Cortes and Byron David and Chelsea Finn and Chuyuan Fu and
+             Keerthana Gopalakrishnan and Karol Hausman and Alex Herzog and
+             Daniel Ho and Jasmine Hsu and Julian Ibarz and Brian Ichter and
+             Alex Irpan and Eric Jang and Rosario Jauregui Ruano and Kyle Jeffrey and
+             Sally Jesmonth and Nikhil J. Joshi and Ryan Julian and Dmitry Kalashnikov and
+             Yuheng Kuang and Kuang-Huei Lee and Sergey Levine and Yao Lu and
+             Linda Luu and Carolina Parada and Peter Pastor and Jornell Quiambao and
+             Kanishka Rao and Jarek Rettinghouse and Diego Reyes and Pierre Sermanet and
+             Nicolas Sievers and Clayton Tan and Alexander Toshev and Vincent Vanhoucke and
+             Fei Xia and Ted Xiao and Peng Xu and Sichun Xu and Mengyuan Yan and Andy Zeng},
+  title   = {Do As I Can, Not As I Say: Grounding Language in Robotic Affordances},
+  journal = {arXiv preprint arXiv:2204.01691},
+  year    = {2022}
+}
+
+% --- Restored below: these 5 entries were cited in the text (introduction.tex,
+% sota.tex, dizertatie.tex, implementation_details.tex) but their keys/entries
+% were missing from this file, which would break compilation. Restored verbatim
+% from the pre-cleanup version of this file, at the same level of verification
+% as before that pass -- they have not received the same author-list/DOI
+% polish as the entries above and should be checked to the same standard.
 
 @article{macenski2022ros2,
   author  = {S. Macenski and T. Foote and B. Gerkey and C. Lalancette and W. Woodall},
@@ -23,28 +119,12 @@
   publisher = {AAAS}
 }
 
-@inproceedings{merkel2014docker,
-  author    = {Dirk Merkel},
-  title     = {Docker: Lightweight Linux Containers for Consistent Development and Deployment},
-  booktitle = {Linux Journal},
-  year      = {2014}
-}
-
-
 @inproceedings{verma2015borg,
   author    = {A. Verma and L. Pedrosa and M. Korupolu and D. Oppenheimer and E. Tune and J. Wilkes},
   title     = {Large-Scale Cluster Management at Google with Borg},
   booktitle = {Proceedings of the Tenth European Conference on Computer Systems (EuroSys)},
   year      = {2015},
   publisher = {ACM}
-}
-
-
-@misc{robotkube2025,
-  author = {{RWTH Aachen University}},
-  title = {RobotKube: Kubernetes-Based Robotic Infrastructure Management},
-  year = {2025},
-  howpublished = {\url{https://github.com/ika-rwth-aachen/robotkube}}
 }
 
 @inproceedings{fogros22023,
@@ -55,74 +135,11 @@
   publisher = {IEEE}
 }
 
-@misc{osrfnexus2025,
-  author = {{Open Source Robotics Foundation}},
-  title = {OSRF Nexus: ROS Dependency and Version Management},
-  year = {2025},
-  howpublished = {\url{https://github.com/osrf/nexus}}
-}
-
 @misc{jinja2025,
   author = {{Pallets Projects}},
   title = {Jinja2 Documentation},
   year = {2025},
   howpublished = {\url{https://jinja.palletsprojects.com}}
-}
-
-@article{mistral2023,
-  author = {A. Mensch et al.},
-  title = {Mistral 7B: A 7-Billion-Parameter Language Model Engineered for Superior Performance and Efficiency},
-  journal = {arXiv preprint arXiv:2310.06825},
-  year = {2023}
-}
-
-@article{deepseekcoder2024,
-  author = {D. Guo et al.},
-  title = {DeepSeek-Coder: When the Large Language Model Meets Programming},
-  journal = {arXiv preprint arXiv:2401.14196},
-  year = {2024}
-}
-
-@article{deepseekr12025,
-  author = {D. Guo et al.},
-  title = {DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning},
-  journal = {arXiv preprint arXiv:2501.12948},
-  year = {2025}
-}
-
-@article{thinkinsidejson2025,
-  author = {B. Agarwal and I. Joshi and V. Rojkova},
-  title = {Think Inside the JSON: Reinforcement Strategy for Strict LLM Schema Adherence},
-  journal = {arXiv preprint arXiv:2502.14905},
-  year = {2025}
-}
-
-@inproceedings{instructiontuning2025,
-  author = {J. Xie and S. Syu and H.-Y. Lee},
-  title = {Exploring the Impact of Instruction-Tuning on LLM’s Susceptibility to Hallucinations},
-  booktitle = {Proceedings of ACL},
-  year = {2025}
-}
-
-@inproceedings{brown2020,
-  author = {T. B. Brown et al.},
-  title = {Language Models Are Few-Shot Learners},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  year = {2020}
-}
-
-@article{wei2022,
-  author = {J. Wei et al.},
-  title = {Chain-of-Thought Prompting Elicits Reasoning in Large Language Models},
-  journal = {arXiv preprint arXiv:2201.11903},
-  year = {2022}
-}
-
-@article{autogen2023,
-  author = {S. Shen et al.},
-  title = {AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation Framework},
-  journal = {arXiv preprint arXiv:2308.08155},
-  year = {2023}
 }
 
 @inproceedings{ouyang2022instructgpt,
@@ -132,24 +149,11 @@
   year      = {2022}
 }
 
-
-@article{doasicannot2022,
-  author = {S. Y. Feng et al.},
-  title = {Do As I Can, Not As I Say: Grounding Language in Robotic Affordances},
-  journal = {arXiv preprint arXiv:2204.01691},
-  year = {2022}
-}
-
-@book{russell2020,
-  author = {S. Russell and P. Norvig},
-  title = {Artificial Intelligence: A Modern Approach},
-  edition = {4},
-  publisher = {Pearson},
-  year = {2020}
-}
-
 @article{khattab2023dspy,
-  author  = {Omar Khattab and Christopher Potts and Matei Zaharia},
+  author  = {Omar Khattab and Arnav Singhvi and Paridhi Maheshwari and
+             Zhiyuan Zhang and Keshav Santhanam and Sri Vardhamanan and
+             Saiful Haq and Ashutosh Sharma and Thomas T. Joshi and
+             Hanna Moazam and Heather Miller and Matei Zaharia and Christopher Potts},
   title   = {DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines},
   journal = {arXiv preprint arXiv:2310.03714},
   year    = {2023}

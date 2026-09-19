@@ -21,9 +21,12 @@ class ApplicationConfigurationTests(unittest.TestCase):
         configuration = load_application_configuration()
         self.assertEqual(configuration.operation, "mission")
         self.assertEqual(configuration.workspace, Path.cwd().resolve())
-        self.assertEqual(configuration.context_variant, "metadata_graph")
-        self.assertEqual(configuration.ollama_context_window, 8192)
-        self.assertEqual(configuration.parameter_selection_context_window, 16384)
+        self.assertEqual(configuration.context_variant, "llm_semantic")
+        self.assertEqual(configuration.retrieval_top_k, 10)
+        self.assertEqual(
+            configuration.semantic_enrichment,
+            Path("artifacts/semantic_parameters/enrichment_v2/enrichment.json"),
+        )
 
     def test_unknown_and_invalid_settings_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

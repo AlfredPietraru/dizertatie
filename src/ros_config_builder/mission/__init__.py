@@ -4,8 +4,8 @@ from .inference import MissionInterpreter, OllamaBackend, build_interpretation_p
 from .reasoning import (
     ParameterReasoner, ParameterReasoningResult, ParameterSelectionInterpretation,
     ParameterValueInterpretation, ProposedParameterChange, SelectedParameter,
-    build_parameter_selection_prompt, build_parameter_value_prompt,
-    build_parameter_system_context,
+    build_parameter_selection_prompt, build_parameter_selection_system_context,
+    build_parameter_value_prompt,
     validate_parameter_selection, validate_parameter_values,
 )
 from .retrieval import (
@@ -33,11 +33,14 @@ from .dataset import (
     ParameterReasoningTask, ParameterTaskExpectation, SeedConfiguration,
     SyntheticSeed, UnsupportedSeed, ValidSeed, load_parameter_reasoning_tasks,
     load_synthetic_seeds, summarize_synthetic_seeds,
+    validate_frozen_dataset,
 )
 from .generation import (
     CandidateReview, OllamaParaphraseBackend, SyntheticCandidate,
-    automatically_validate_candidates, dataset_quality_report, freeze_accepted_dataset,
+    automatically_validate_candidates, build_generation_prompt,
+    dataset_quality_report, freeze_accepted_dataset,
     generate_paraphrases, load_candidates, review_candidate, write_candidate_history,
+    semantic_validation_issues, semantically_validate_candidates,
     write_quality_report, write_review_queue,
 )
 from .schema import (

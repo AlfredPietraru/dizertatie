@@ -8,7 +8,7 @@ from pathlib import Path
 from helper_scripts.enrich_parameters import _load_frozen_evidence
 from helper_scripts.evaluate_missions import DEFAULT_EVALUATION_OUTPUT, _parser as evaluation_parser
 from helper_scripts.evaluate_orchestrated_dataset import (
-    DEFAULT_DATASETS, DEFAULT_OUTPUT as ORCHESTRATED_OUTPUT,
+    DEFAULT_OUTPUT as ORCHESTRATED_OUTPUT,
     _append_checkpoint, _load_predictions_checkpoint, _parser as orchestrated_parser,
 )
 from helper_scripts.synthetic_dataset import DATASET_GENERATION_DIRECTORY, _parser as dataset_parser
@@ -20,16 +20,17 @@ from ros_config_builder.mission import (
 
 class HelperContractTests(unittest.TestCase):
     def test_active_helper_defaults_do_not_write_into_historical_results(self) -> None:
-        evaluation = evaluation_parser().parse_args([])
-        orchestrated = orchestrated_parser().parse_args([])
+        dataset = Path("data/example.jsonl")
+        evaluation = evaluation_parser().parse_args(["--dataset", str(dataset)])
+        orchestrated = orchestrated_parser().parse_args(["--dataset", str(dataset)])
         generation = dataset_parser().parse_args(["generate"])
         freezing = dataset_parser().parse_args(["freeze"])
         queue = dataset_parser().parse_args(["queue"])
 
         self.assertEqual(evaluation.output, DEFAULT_EVALUATION_OUTPUT)
         self.assertEqual(orchestrated.output, ORCHESTRATED_OUTPUT)
-        self.assertIsNone(orchestrated.dataset)
-        self.assertEqual(len(DEFAULT_DATASETS), 2)
+        self.assertEqual(evaluation.dataset, dataset)
+        self.assertEqual(orchestrated.dataset, [dataset])
         self.assertEqual(generation.raw_directory, DATASET_GENERATION_DIRECTORY / "raw")
         self.assertEqual(freezing.report_directory, DATASET_GENERATION_DIRECTORY / "quality")
         self.assertEqual(queue.output, DATASET_GENERATION_DIRECTORY / "review_queue.md")
